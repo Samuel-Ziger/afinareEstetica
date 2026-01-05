@@ -68,6 +68,7 @@ interface Course {
   benefits: string[]
   modules: { title: string; topics: string[] }[]
   targetAudience: string[]
+  image?: string
 }
 
 interface Config {
@@ -362,11 +363,25 @@ export default function AdminDashboard() {
     // Load courses
     const loadCourses = async () => {
       const coursesSnapshot = await getDocs(collection(db, "cursos"))
-      const coursesData: Course[] = []
-      coursesSnapshot.forEach((doc) => {
-        coursesData.push({ id: doc.id, ...doc.data() } as Course)
-      })
-      setCourses(coursesData)
+        const coursesData: Course[] = []
+        coursesSnapshot.forEach((doc) => {
+          const data = doc.data()
+          coursesData.push({
+            id: doc.id,
+            name: data.name || "",
+            description: data.description || "",
+            preco: data.preco || 0,
+            duration: data.duration || "",
+            format: data.format || "",
+            certificate: data.certificate || "",
+            students: data.students || "",
+            benefits: data.benefits || [],
+            modules: data.modules || [],
+            targetAudience: data.targetAudience || [],
+            image: data.image || "",
+          } as Course)
+        })
+        setCourses(coursesData)
     }
     loadCourses()
     
@@ -374,7 +389,21 @@ export default function AdminDashboard() {
     const unsubscribeCourses = onSnapshot(collection(db, "cursos"), (snapshot) => {
       const coursesData: Course[] = []
       snapshot.forEach((doc) => {
-        coursesData.push({ id: doc.id, ...doc.data() } as Course)
+        const data = doc.data()
+        coursesData.push({
+          id: doc.id,
+          name: data.name || "",
+          description: data.description || "",
+          preco: data.preco || 0,
+          duration: data.duration || "",
+          format: data.format || "",
+          certificate: data.certificate || "",
+          students: data.students || "",
+          benefits: data.benefits || [],
+          modules: data.modules || [],
+          targetAudience: data.targetAudience || [],
+          image: data.image || "",
+        } as Course)
       })
       setCourses(coursesData)
     })
@@ -832,6 +861,110 @@ export default function AdminDashboard() {
     }
   }
 
+  const initializeCourses = async () => {
+    try {
+      console.log("Inicializando curso padrão...")
+      const defaultCourse: Course = {
+        id: "curso-remocao-tatuagem-laser",
+        name: "Curso de Remoção de Tatuagem a Laser",
+        description: "Aprenda a técnica mais moderna e segura de remoção de tatuagens com laser Q-Switched",
+        preco: 3500,
+        duration: "40 horas",
+        format: "Presencial + Material Online",
+        certificate: "Certificado de Conclusão",
+        students: "Turmas de até 8 alunos",
+        image: "",
+        benefits: [
+          "Teoria completa sobre tipos de pele e tatuagens",
+          "Prática supervisionada com equipamentos profissionais",
+          "Protocolos de segurança e biossegurança",
+          "Gestão de clientes e precificação",
+          "Material didático completo",
+          "Certificado reconhecido",
+          "Suporte pós-curso",
+          "Networking com profissionais da área",
+        ],
+        modules: [
+          {
+            title: "Módulo 1: Fundamentos",
+            topics: ["Anatomia da pele", "Tipos de tatuagens", "Tecnologia laser", "Segurança e biossegurança"],
+          },
+          {
+            title: "Módulo 2: Prática",
+            topics: [
+              "Manuseio do equipamento",
+              "Protocolos de tratamento",
+              "Gestão de expectativas",
+              "Casos práticos supervisionados",
+            ],
+          },
+          {
+            title: "Módulo 3: Gestão",
+            topics: ["Precificação de serviços", "Marketing e captação", "Gestão de clientes", "Aspectos legais"],
+          },
+        ],
+        targetAudience: [
+          "Esteticistas",
+          "Biomédicos",
+          "Enfermeiros",
+          "Profissionais da área da saúde e estética",
+          "Empreendedores do setor",
+        ],
+        image: "",
+      }
+
+      // Verificar se o curso já existe
+      const existingCourses = await getDocs(collection(db, "cursos"))
+      const existingIds = new Set(existingCourses.docs.map(doc => doc.id))
+
+      if (existingIds.has(defaultCourse.id)) {
+        toast({
+          title: "Informação",
+          description: "O curso já está cadastrado",
+        })
+        return
+      }
+
+      // Adicionar curso ao Firestore
+      await setDoc(doc(db, "cursos", defaultCourse.id), defaultCourse)
+      console.log("Curso adicionado:", defaultCourse.name)
+
+      // Recarregar cursos após adicionar
+      const newCoursesSnapshot = await getDocs(collection(db, "cursos"))
+      const newCoursesData: Course[] = []
+      newCoursesSnapshot.forEach((doc) => {
+        const data = doc.data()
+        newCoursesData.push({
+          id: doc.id,
+          name: data.name || "",
+          description: data.description || "",
+          preco: data.preco || 0,
+          duration: data.duration || "",
+          format: data.format || "",
+          certificate: data.certificate || "",
+          students: data.students || "",
+          benefits: data.benefits || [],
+          modules: data.modules || [],
+          targetAudience: data.targetAudience || [],
+          image: data.image || "",
+        } as Course)
+      })
+      setCourses(newCoursesData)
+
+      toast({
+        title: "Sucesso",
+        description: "Curso inicializado com sucesso",
+      })
+    } catch (error) {
+      console.error("Error initializing course:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível inicializar o curso",
+        variant: "destructive",
+      })
+    }
+  }
+
   const saveConfig = async () => {
     try {
       await setDoc(doc(db, "config", "main"), config)
@@ -911,6 +1044,72 @@ export default function AdminDashboard() {
       toast({
         title: "Erro",
         description: "Não foi possível excluir a foto",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCourseImageUpload = async (courseId: string, file: File) => {
+    setUploadingPhotos(true)
+    try {
+      const course = courses.find(c => c.id === courseId) || editingCourse
+      if (!course) return
+
+      const storageRef = ref(storage, `cursos/${courseId}/${Date.now()}_${file.name}`)
+      await uploadBytes(storageRef, file)
+      const imageUrl = await getDownloadURL(storageRef)
+
+      // Se o curso já existe no banco, atualizar
+      if (course.id && courses.find(c => c.id === course.id)) {
+        await setDoc(doc(db, "cursos", courseId), {
+          ...course,
+          image: imageUrl
+        })
+      } else {
+        // Se é um novo curso, apenas atualizar o estado
+        setEditingCourse({ ...course, image: imageUrl })
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Imagem enviada com sucesso",
+      })
+    } catch (error) {
+      console.error("Error uploading course image:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar a imagem",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingPhotos(false)
+    }
+  }
+
+  const deleteCourseImage = async (courseId: string) => {
+    try {
+      const course = courses.find(c => c.id === courseId)
+      if (!course || !course.image) return
+
+      // Delete from storage
+      const imageRef = ref(storage, course.image)
+      await deleteObject(imageRef).catch(() => {}) // Ignore errors if file doesn't exist
+
+      // Update course
+      await setDoc(doc(db, "cursos", courseId), {
+        ...course,
+        image: ""
+      })
+
+      toast({
+        title: "Sucesso",
+        description: "Imagem excluída com sucesso",
+      })
+    } catch (error) {
+      console.error("Error deleting course image:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a imagem",
         variant: "destructive",
       })
     }
@@ -1424,31 +1623,48 @@ export default function AdminDashboard() {
             <Card className="bg-white p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900">Gerenciar Cursos</h3>
-                <Button
-                  onClick={() => {
-                    setEditingCourse({
-                      id: "",
-                      name: "",
-                      description: "",
-                      preco: 0,
-                      duration: "",
-                      format: "",
-                      certificate: "",
-                      students: "",
-                      benefits: [],
-                      modules: [],
-                      targetAudience: []
-                    })
-                    setIsCourseDialogOpen(true)
-                  }}
-                  className="bg-salmon-500 hover:bg-salmon-600 text-white"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar Curso
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={initializeCourses}
+                    variant="outline"
+                    className="border-salmon-500 text-salmon-600 hover:bg-salmon-50"
+                  >
+                    Inicializar Curso Padrão
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditingCourse({
+                        id: "",
+                        name: "",
+                        description: "",
+                        preco: 0,
+                        duration: "",
+                        format: "",
+                        certificate: "",
+                        students: "",
+                        benefits: [],
+                        modules: [],
+                        targetAudience: []
+                      })
+                      setIsCourseDialogOpen(true)
+                    }}
+                    className="bg-salmon-500 hover:bg-salmon-600 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Curso
+                  </Button>
+                </div>
               </div>
               <div className="space-y-4">
-                {courses.map((course) => (
+                {courses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 mb-4">Nenhum curso cadastrado ainda.</p>
+                    <p className="text-sm text-gray-400 mb-4">
+                      Clique em "Inicializar Curso Padrão" para criar o curso padrão ou adicione um novo curso.
+                    </p>
+                  </div>
+                ) : (
+                  courses.map((course) => (
                   <div key={course.id} className="border rounded-lg p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -1458,6 +1674,21 @@ export default function AdminDashboard() {
                           <span className="text-salmon-600 font-semibold">R$ {course.preco.toLocaleString()}</span>
                           <span className="text-gray-500">{course.duration}</span>
                         </div>
+                        {course.image && (
+                          <div className="mt-3 relative w-32 h-20 rounded overflow-hidden">
+                            <Image src={course.image} alt={course.name} fill className="object-cover" />
+                            <button
+                              onClick={() => {
+                                if (confirm("Tem certeza que deseja excluir esta imagem?")) {
+                                  deleteCourseImage(course.id)
+                                }
+                              }}
+                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2 ml-4">
                         <Button
@@ -1487,7 +1718,8 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </Card>
           )}
@@ -1858,6 +2090,68 @@ export default function AdminDashboard() {
                   value={editingCourse.students}
                   onChange={(e) => setEditingCourse({ ...editingCourse, students: e.target.value })}
                 />
+              </div>
+              <div>
+                <Label>Imagem do Curso</Label>
+                {editingCourse.image && (
+                  <div className="mt-2 mb-3 relative w-full h-48 rounded overflow-hidden border">
+                    <Image src={editingCourse.image} alt={editingCourse.name} fill className="object-cover" />
+                    <button
+                      onClick={() => {
+                        if (confirm("Tem certeza que deseja excluir esta imagem?")) {
+                          setEditingCourse({ ...editingCourse, image: "" })
+                        }
+                      }}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        if (editingCourse.id && courses.find(c => c.id === editingCourse.id)) {
+                          // Curso existente - fazer upload direto
+                          await handleCourseImageUpload(editingCourse.id, e.target.files[0])
+                        } else {
+                          // Novo curso - fazer upload e salvar URL no estado
+                          setUploadingPhotos(true)
+                          try {
+                            const tempId = editingCourse.id || editingCourse.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+                            const storageRef = ref(storage, `cursos/${tempId}/${Date.now()}_${e.target.files[0].name}`)
+                            await uploadBytes(storageRef, e.target.files[0])
+                            const imageUrl = await getDownloadURL(storageRef)
+                            setEditingCourse({ ...editingCourse, image: imageUrl })
+                            toast({
+                              title: "Sucesso",
+                              description: "Imagem carregada. Salve o curso para finalizar.",
+                            })
+                          } catch (error) {
+                            console.error("Error uploading image:", error)
+                            toast({
+                              title: "Erro",
+                              description: "Não foi possível carregar a imagem",
+                              variant: "destructive",
+                            })
+                          } finally {
+                            setUploadingPhotos(false)
+                          }
+                        }
+                      }
+                    }}
+                    disabled={uploadingPhotos}
+                  />
+                  <Button type="button" variant="outline" disabled={uploadingPhotos} className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingPhotos ? "Enviando..." : editingCourse.image ? "Trocar Imagem" : "Enviar Imagem"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Envie uma imagem para o curso (recomendado: 1200x675px)</p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsCourseDialogOpen(false)}>

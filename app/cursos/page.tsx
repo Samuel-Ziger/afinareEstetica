@@ -1,56 +1,90 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { BookOpen, Award, Users, Clock, Check } from "lucide-react"
 import Image from "next/image"
+import { collection, getDocs } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
-const course = {
-  name: "Curso de Remoção de Tatuagem a Laser",
-  description: "Aprenda a técnica mais moderna e segura de remoção de tatuagens com laser Q-Switched",
-  preco: 3500,
-  duration: "40 horas",
-  format: "Presencial + Material Online",
-  certificate: "Certificado de Conclusão",
-  students: "Turmas de até 8 alunos",
-  benefits: [
-    "Teoria completa sobre tipos de pele e tatuagens",
-    "Prática supervisionada com equipamentos profissionais",
-    "Protocolos de segurança e biossegurança",
-    "Gestão de clientes e precificação",
-    "Material didático completo",
-    "Certificado reconhecido",
-    "Suporte pós-curso",
-    "Networking com profissionais da área",
-  ],
-  modules: [
-    {
-      title: "Módulo 1: Fundamentos",
-      topics: ["Anatomia da pele", "Tipos de tatuagens", "Tecnologia laser", "Segurança e biossegurança"],
-    },
-    {
-      title: "Módulo 2: Prática",
-      topics: [
-        "Manuseio do equipamento",
-        "Protocolos de tratamento",
-        "Gestão de expectativas",
-        "Casos práticos supervisionados",
-      ],
-    },
-    {
-      title: "Módulo 3: Gestão",
-      topics: ["Precificação de serviços", "Marketing e captação", "Gestão de clientes", "Aspectos legais"],
-    },
-  ],
-  targetAudience: [
-    "Esteticistas",
-    "Biomédicos",
-    "Enfermeiros",
-    "Profissionais da área da saúde e estética",
-    "Empreendedores do setor",
-  ],
+interface Course {
+  id: string
+  name: string
+  description: string
+  preco: number
+  duration: string
+  format: string
+  certificate: string
+  students: string
+  benefits: string[]
+  modules: { title: string; topics: string[] }[]
+  targetAudience: string[]
+  image?: string
 }
 
 export default function CursosPage() {
+  const [courses, setCourses] = useState<Course[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const coursesSnapshot = await getDocs(collection(db, "cursos"))
+        const coursesData: Course[] = []
+        coursesSnapshot.forEach((doc) => {
+          const data = doc.data()
+          coursesData.push({
+            id: doc.id,
+            name: data.name || "",
+            description: data.description || "",
+            preco: data.preco || 0,
+            duration: data.duration || "",
+            format: data.format || "",
+            certificate: data.certificate || "",
+            students: data.students || "",
+            benefits: data.benefits || [],
+            modules: data.modules || [],
+            targetAudience: data.targetAudience || [],
+            image: data.image || "",
+          })
+        })
+        setCourses(coursesData)
+      } catch (error) {
+        console.error("Error loading courses:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCourses()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Carregando cursos...</p>
+      </div>
+    )
+  }
+
+  if (courses.length === 0) {
+    return (
+      <div className="py-12 md:py-16">
+        <div className="container px-4">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-muted-foreground mb-4">Nenhum curso disponível no momento.</p>
+            <p className="text-sm text-muted-foreground">Entre em contato conosco para mais informações.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Mostrar o primeiro curso (ou podemos fazer um loop para mostrar todos)
+  const course = courses[0]
+
   return (
     <div className="py-12 md:py-16">
       <div className="container px-4">
@@ -65,8 +99,8 @@ export default function CursosPage() {
         <div className="mx-auto max-w-4xl mb-12">
           <div className="aspect-video overflow-hidden rounded-2xl bg-muted">
             <Image
-              src="/professional-laser-training-course-with-instructor-d.jpg"
-              alt="Curso de Remoção de Tatuagem a Laser"
+              src={course.image || "/professional-laser-training-course-with-instructor-d.jpg"}
+              alt={course.name}
               width={1200}
               height={675}
               className="object-cover w-full h-full"
@@ -125,7 +159,7 @@ export default function CursosPage() {
                 </div>
                 <div className="flex flex-col gap-3">
                   <a
-                    href="https://wa.me/5561986543099?text=Olá! Gostaria de me inscrever no Curso de Remoção de Tatuagem a Laser."
+                    href={`https://wa.me/5561986543099?text=Olá! Gostaria de me inscrever no ${course.name}.`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full md:w-auto"
@@ -135,7 +169,7 @@ export default function CursosPage() {
                     </Button>
                   </a>
                   <a
-                    href="https://wa.me/5561986543099?text=Olá! Gostaria de mais informações sobre o Curso de Remoção de Tatuagem."
+                    href={`https://wa.me/5561986543099?text=Olá! Gostaria de mais informações sobre o ${course.name}.`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full md:w-auto"
@@ -154,60 +188,66 @@ export default function CursosPage() {
           </Card>
 
           {/* Benefits */}
-          <section className="mb-12">
-            <h2 className="font-serif text-2xl font-bold mb-6">O que você vai aprender</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {course.benefits.map((benefit, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-salmon-100 text-salmon-600 mt-0.5">
-                    <Check className="h-4 w-4" />
+          {course.benefits && course.benefits.length > 0 && (
+            <section className="mb-12">
+              <h2 className="font-serif text-2xl font-bold mb-6">O que você vai aprender</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {course.benefits.map((benefit, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-salmon-100 text-salmon-600 mt-0.5">
+                      <Check className="h-4 w-4" />
+                    </div>
+                    <p className="text-sm">{benefit}</p>
                   </div>
-                  <p className="text-sm">{benefit}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Modules */}
-          <section className="mb-12">
-            <h2 className="font-serif text-2xl font-bold mb-6">Módulos do Curso</h2>
-            <div className="space-y-4">
-              {course.modules.map((module, index) => (
-                <Card key={index}>
-                  <CardHeader>
-                    <CardTitle className="text-lg">{module.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {module.topics.map((topic, topicIndex) => (
-                        <li key={topicIndex} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <span className="text-salmon-600">•</span>
-                          {topic}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
+          {course.modules && course.modules.length > 0 && (
+            <section className="mb-12">
+              <h2 className="font-serif text-2xl font-bold mb-6">Módulos do Curso</h2>
+              <div className="space-y-4">
+                {course.modules.map((module, index) => (
+                  <Card key={index}>
+                    <CardHeader>
+                      <CardTitle className="text-lg">{module.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {module.topics.map((topic, topicIndex) => (
+                          <li key={topicIndex} className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <span className="text-salmon-600">•</span>
+                            {topic}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Target Audience */}
-          <section className="mb-12">
-            <h2 className="font-serif text-2xl font-bold mb-6">Para quem é este curso</h2>
-            <Card>
-              <CardContent className="p-6">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {course.targetAudience.map((audience, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-salmon-600" />
-                      <span className="text-sm">{audience}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
+          {course.targetAudience && course.targetAudience.length > 0 && (
+            <section className="mb-12">
+              <h2 className="font-serif text-2xl font-bold mb-6">Para quem é este curso</h2>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {course.targetAudience.map((audience, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-salmon-600" />
+                        <span className="text-sm">{audience}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
           {/* CTA */}
           <Card className="bg-gradient-to-br from-salmon-500 to-salmon-600 text-white border-0">
@@ -219,7 +259,7 @@ export default function CursosPage() {
                 mercado de estética.
               </p>
               <a
-                href="https://wa.me/5561986543099?text=Olá! Gostaria de me inscrever no curso."
+                href={`https://wa.me/5561986543099?text=Olá! Gostaria de me inscrever no curso.`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
