@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Menu, X, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,6 +9,7 @@ import { onAuthStateChanged } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 
 export function Header() {
+  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -35,22 +37,51 @@ export function Header() {
         <nav className="hidden md:flex items-center space-x-8">
           <Link
             href="/"
-            className="text-sm font-medium text-gray-900 hover:text-salmon-500 transition-colors relative after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+            className={`text-sm font-medium transition-colors relative ${
+              pathname === "/"
+                ? "text-gray-900 after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+                : "text-gray-600 hover:text-salmon-500"
+            }`}
           >
             Home
           </Link>
-          <Link href="/servicos" className="text-sm font-medium text-gray-600 hover:text-salmon-500 transition-colors">
+          <Link
+            href="/servicos"
+            className={`text-sm font-medium transition-colors relative ${
+              pathname === "/servicos"
+                ? "text-gray-900 after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+                : "text-gray-600 hover:text-salmon-500"
+            }`}
+          >
             Serviços
           </Link>
-          <Link href="/combos" className="text-sm font-medium text-gray-600 hover:text-salmon-500 transition-colors">
+          <Link
+            href="/combos"
+            className={`text-sm font-medium transition-colors relative ${
+              pathname === "/combos"
+                ? "text-gray-900 after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+                : "text-gray-600 hover:text-salmon-500"
+            }`}
+          >
             Combos
           </Link>
-          <Link href="/cursos" className="text-sm font-medium text-gray-600 hover:text-salmon-500 transition-colors">
+          <Link
+            href="/cursos"
+            className={`text-sm font-medium transition-colors relative ${
+              pathname === "/cursos"
+                ? "text-gray-900 after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+                : "text-gray-600 hover:text-salmon-500"
+            }`}
+          >
             Cursos
           </Link>
           <Link
             href="/agendamento"
-            className="text-sm font-medium text-gray-600 hover:text-salmon-500 transition-colors"
+            className={`text-sm font-medium transition-colors relative ${
+              pathname === "/agendamento"
+                ? "text-gray-900 after:absolute after:bottom-[-8px] after:left-0 after:w-full after:h-0.5 after:bg-salmon-500"
+                : "text-gray-600 hover:text-salmon-500"
+            }`}
           >
             Agendamento
           </Link>
