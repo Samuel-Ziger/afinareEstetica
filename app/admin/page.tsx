@@ -5,9 +5,14 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
-import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut } from "lucide-react"
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore"
-import { auth, db } from "@/lib/firebase"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut, CheckCircle2, XCircle, Edit, Trash2, Plus, Upload } from "lucide-react"
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
+import { auth, db, storage } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
@@ -26,12 +31,82 @@ interface Appointment {
   createdAt: any
 }
 
+interface Service {
+  id: string
+  name: string
+  description: string
+  longDescription?: string
+  preco_original: number
+  preco_promocional: number
+  category: string
+  fotos?: string[]
+  benefits?: string[]
+  faqs?: { question: string; answer: string }[]
+  duration?: string
+}
+
+interface Combo {
+  id: string
+  name: string
+  description: string
+  services: string[]
+  preco_original: number
+  preco_promocional: number
+  economia: number
+  sessions: number
+}
+
+interface Course {
+  id: string
+  name: string
+  description: string
+  preco: number
+  duration: string
+  format: string
+  certificate: string
+  students: string
+  benefits: string[]
+  modules: { title: string; topics: string[] }[]
+  targetAudience: string[]
+}
+
+interface Config {
+  whatsapp: string
+  instagram: string
+  endereco: string
+  horarios: {
+    semana: string
+    sabado: string
+  }
+}
+
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [services, setServices] = useState<Service[]>([])
+  const [combos, setCombos] = useState<Combo[]>([])
+  const [courses, setCourses] = useState<Course[]>([])
+  const [config, setConfig] = useState<Config>({
+    whatsapp: "(61) 98654-3099",
+    instagram: "@afinare.estetica",
+    endereco: "CLN 103 bl b sala 16 Asa Norte",
+    horarios: {
+      semana: "Segunda a Sexta: 08h às 19h",
+      sabado: "Sábado: 08h às 13h"
+    }
+  })
   const [date, setDate] = useState<Date | undefined>(new Date())
-  const [activeTab, setActiveTab] = useState("agendamentos")
+  const [activeTab, setActiveTab] = useState("inicio")
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  const [editingCombo, setEditingCombo] = useState<Combo | null>(null)
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null)
+  const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false)
+  const [isServiceDetailsDialogOpen, setIsServiceDetailsDialogOpen] = useState(false)
+  const [isComboDialogOpen, setIsComboDialogOpen] = useState(false)
+  const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false)
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false)
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
 
@@ -51,9 +126,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!user) return
 
+    // Load appointments
     const q = query(collection(db, "agendamentos"), orderBy("createdAt", "desc"))
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeAppointments = onSnapshot(q, (snapshot) => {
       const appointmentsData: Appointment[] = []
       snapshot.forEach((doc) => {
         appointmentsData.push({ id: doc.id, ...doc.data() } as Appointment)
@@ -61,7 +136,265 @@ export default function AdminDashboard() {
       setAppointments(appointmentsData)
     })
 
-    return () => unsubscribe()
+    // Load services
+    const loadServices = async () => {
+      try {
+        const servicesSnapshot = await getDocs(collection(db, "servicos"))
+        const servicesData: Service[] = []
+        servicesSnapshot.forEach((doc) => {
+          const data = doc.data()
+          servicesData.push({ 
+            id: doc.id, 
+            name: data.name || "",
+            description: data.description || "",
+            preco_original: data.preco_original || 0,
+            preco_promocional: data.preco_promocional || 0,
+            category: data.category || "wellness",
+            fotos: data.fotos || [],
+            longDescription: data.longDescription,
+            benefits: data.benefits,
+            faqs: data.faqs
+          } as Service)
+        })
+        setServices(servicesData)
+        console.log("Serviços carregados:", servicesData.length)
+        
+        // Se não houver serviços, inicializar automaticamente
+        if (servicesData.length === 0) {
+          console.log("Nenhum serviço encontrado. Inicializando serviços padrão...")
+        const defaultServices: Service[] = [
+          {
+            id: "massagens",
+            name: "Massagens",
+            description: "Massagens relaxantes e terapêuticas para alívio do estresse, tensão muscular e promoção do bem-estar geral.",
+            preco_original: 200,
+            preco_promocional: 150,
+            category: "wellness",
+            fotos: [],
+          },
+          {
+            id: "limpeza-facial",
+            name: "Limpeza Facial",
+            description: "Tratamento facial profundo para remoção de impurezas, desobstrução de poros e renovação da pele.",
+            preco_original: 160,
+            preco_promocional: 120,
+            category: "facial",
+            fotos: [],
+          },
+          {
+            id: "acupuntura",
+            name: "Acupuntura",
+            description: "Terapia milenar chinesa para equilíbrio energético, alívio de dores e promoção da saúde integral.",
+            preco_original: 180,
+            preco_promocional: 140,
+            category: "wellness",
+            fotos: [],
+          },
+          {
+            id: "terapias-combinadas",
+            name: "Terapias Combinadas",
+            description: "Protocolos personalizados que combinam diferentes técnicas para resultados otimizados.",
+            preco_original: 300,
+            preco_promocional: 250,
+            category: "wellness",
+            fotos: [],
+          },
+          {
+            id: "criolipolise",
+            name: "Criolipólise",
+            description: "Redução de gordura localizada através do congelamento controlado das células adiposas.",
+            preco_original: 800,
+            preco_promocional: 650,
+            category: "body",
+            fotos: [],
+          },
+          {
+            id: "depilacao-cera",
+            name: "Depilação à Cera",
+            description: "Depilação profissional com cera de alta qualidade para uma pele lisa e macia por mais tempo.",
+            preco_original: 100,
+            preco_promocional: 80,
+            category: "body",
+            fotos: [],
+          },
+          {
+            id: "epilacao-laser",
+            name: "Epilação a Laser",
+            description: "Remoção definitiva de pelos com tecnologia laser, segura e eficaz para todos os tipos de pele.",
+            preco_original: 400,
+            preco_promocional: 320,
+            category: "laser",
+            fotos: [],
+          },
+          {
+            id: "botox",
+            name: "Botox",
+            description: "Tratamento para suavizar rugas e linhas de expressão, proporcionando aspecto rejuvenescido.",
+            preco_original: 500,
+            preco_promocional: 400,
+            category: "injectable",
+            fotos: [],
+          },
+          {
+            id: "peelings",
+            name: "Peelings",
+            description: "Peelings de diamante, mar morto e outros para renovação celular e tratamento de imperfeições.",
+            preco_original: 250,
+            preco_promocional: 200,
+            category: "facial",
+            fotos: [],
+          },
+          {
+            id: "remocao-tatuagens",
+            name: "Remoção de Tatuagens",
+            description: "Remoção segura e eficaz de tatuagens com tecnologia laser de última geração.",
+            preco_original: 350,
+            preco_promocional: 280,
+            category: "laser",
+            fotos: [],
+          },
+          {
+            id: "despigmentacao-sobrancelhas",
+            name: "Despigmentação de Sobrancelhas",
+            description: "Correção da pigmentação das sobrancelhas para um visual natural e harmonioso.",
+            preco_original: 300,
+            preco_promocional: 240,
+            category: "laser",
+            fotos: [],
+          },
+          {
+            id: "lipo-enzimatica",
+            name: "Lipo Enzimática",
+            description: "Redução de medidas através da aplicação de enzimas que dissolvem a gordura localizada.",
+            preco_original: 450,
+            preco_promocional: 360,
+            category: "body",
+            fotos: [],
+          },
+          {
+            id: "hidrolipoclasia",
+            name: "Hidrolipoclasia",
+            description: "Tratamento para redução de gordura localizada através da infusão de solução fisiológica.",
+            preco_original: 500,
+            preco_promocional: 400,
+            category: "body",
+            fotos: [],
+          },
+        ]
+
+          try {
+            for (const service of defaultServices) {
+              await setDoc(doc(db, "servicos", service.id), service)
+              console.log("Serviço criado:", service.name)
+            }
+            // Recarregar serviços após inicialização
+            const newServicesSnapshot = await getDocs(collection(db, "servicos"))
+            const newServicesData: Service[] = []
+            newServicesSnapshot.forEach((doc) => {
+              const data = doc.data()
+              newServicesData.push({ 
+                id: doc.id, 
+                name: data.name || "",
+                description: data.description || "",
+                preco_original: data.preco_original || 0,
+                preco_promocional: data.preco_promocional || 0,
+                category: data.category || "wellness",
+                fotos: data.fotos || [],
+                longDescription: data.longDescription,
+                benefits: data.benefits,
+                faqs: data.faqs
+              } as Service)
+            })
+            setServices(newServicesData)
+            console.log("Serviços inicializados:", newServicesData.length)
+          } catch (error) {
+            console.error("Error auto-initializing services:", error)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading services:", error)
+      }
+    }
+    loadServices()
+    
+    // Subscribe to services changes
+    const unsubscribeServices = onSnapshot(collection(db, "servicos"), (snapshot) => {
+      const servicesData: Service[] = []
+      snapshot.forEach((doc) => {
+        const data = doc.data()
+        servicesData.push({ 
+          id: doc.id, 
+          name: data.name || "",
+          description: data.description || "",
+          preco_original: data.preco_original || 0,
+          preco_promocional: data.preco_promocional || 0,
+          category: data.category || "wellness",
+          fotos: data.fotos || [],
+          longDescription: data.longDescription,
+          benefits: data.benefits,
+          faqs: data.faqs
+        } as Service)
+      })
+      setServices(servicesData)
+      console.log("Serviços atualizados via snapshot:", servicesData.length)
+    })
+
+    // Load combos
+    const loadCombos = async () => {
+      const combosSnapshot = await getDocs(collection(db, "combos"))
+      const combosData: Combo[] = []
+      combosSnapshot.forEach((doc) => {
+        combosData.push({ id: doc.id, ...doc.data() } as Combo)
+      })
+      setCombos(combosData)
+    }
+    loadCombos()
+    
+    // Subscribe to combos changes
+    const unsubscribeCombos = onSnapshot(collection(db, "combos"), (snapshot) => {
+      const combosData: Combo[] = []
+      snapshot.forEach((doc) => {
+        combosData.push({ id: doc.id, ...doc.data() } as Combo)
+      })
+      setCombos(combosData)
+    })
+
+    // Load courses
+    const loadCourses = async () => {
+      const coursesSnapshot = await getDocs(collection(db, "cursos"))
+      const coursesData: Course[] = []
+      coursesSnapshot.forEach((doc) => {
+        coursesData.push({ id: doc.id, ...doc.data() } as Course)
+      })
+      setCourses(coursesData)
+    }
+    loadCourses()
+    
+    // Subscribe to courses changes
+    const unsubscribeCourses = onSnapshot(collection(db, "cursos"), (snapshot) => {
+      const coursesData: Course[] = []
+      snapshot.forEach((doc) => {
+        coursesData.push({ id: doc.id, ...doc.data() } as Course)
+      })
+      setCourses(coursesData)
+    })
+
+    // Load config
+    const loadConfig = async () => {
+      const configDoc = await getDocs(collection(db, "config"))
+      if (!configDoc.empty) {
+        const configData = configDoc.docs[0].data() as Config
+        setConfig(configData)
+      }
+    }
+    loadConfig()
+
+    return () => {
+      unsubscribeAppointments()
+      unsubscribeServices()
+      unsubscribeCombos()
+      unsubscribeCourses()
+    }
   }, [user])
 
   const handleLogout = async () => {
@@ -70,6 +403,516 @@ export default function AdminDashboard() {
       router.push("/login")
     } catch (error) {
       console.error("Logout error:", error)
+    }
+  }
+
+  const updateAppointmentStatus = async (appointmentId: string, status: "concluido" | "cancelado") => {
+    try {
+      const appointmentRef = doc(db, "agendamentos", appointmentId)
+      await updateDoc(appointmentRef, { status })
+      toast({
+        title: "Sucesso",
+        description: `Agendamento marcado como ${status === "concluido" ? "concluído" : "cancelado"}`,
+      })
+    } catch (error) {
+      console.error("Error updating appointment:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o agendamento",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const saveService = async (service: Service) => {
+    try {
+      if (service.id && services.find(s => s.id === service.id)) {
+        await setDoc(doc(db, "servicos", service.id), service)
+      } else {
+        const newId = service.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+        await setDoc(doc(db, "servicos", newId), { ...service, id: newId })
+      }
+      toast({
+        title: "Sucesso",
+        description: "Serviço salvo com sucesso",
+      })
+      setIsServiceDialogOpen(false)
+      setEditingService(null)
+    } catch (error) {
+      console.error("Error saving service:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar o serviço",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteService = async (serviceId: string) => {
+    try {
+      await deleteDoc(doc(db, "servicos", serviceId))
+      toast({
+        title: "Sucesso",
+        description: "Serviço excluído com sucesso",
+      })
+    } catch (error) {
+      console.error("Error deleting service:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o serviço",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const initializeServices = async () => {
+    try {
+      console.log("Inicializando serviços padrão...")
+      const defaultServices: Service[] = [
+        {
+          id: "massagens",
+          name: "Massagens",
+          description: "Massagens relaxantes e terapêuticas para alívio do estresse, tensão muscular e promoção do bem-estar geral.",
+          preco_original: 200,
+          preco_promocional: 150,
+          category: "wellness",
+          fotos: [],
+        },
+        {
+          id: "limpeza-facial",
+          name: "Limpeza Facial",
+          description: "Tratamento facial profundo para remoção de impurezas, desobstrução de poros e renovação da pele.",
+          preco_original: 160,
+          preco_promocional: 120,
+          category: "facial",
+          fotos: [],
+        },
+        {
+          id: "acupuntura",
+          name: "Acupuntura",
+          description: "Terapia milenar chinesa para equilíbrio energético, alívio de dores e promoção da saúde integral.",
+          preco_original: 180,
+          preco_promocional: 140,
+          category: "wellness",
+          fotos: [],
+        },
+        {
+          id: "terapias-combinadas",
+          name: "Terapias Combinadas",
+          description: "Protocolos personalizados que combinam diferentes técnicas para resultados otimizados.",
+          preco_original: 300,
+          preco_promocional: 250,
+          category: "wellness",
+          fotos: [],
+        },
+        {
+          id: "criolipolise",
+          name: "Criolipólise",
+          description: "Redução de gordura localizada através do congelamento controlado das células adiposas.",
+          preco_original: 800,
+          preco_promocional: 650,
+          category: "body",
+          fotos: [],
+        },
+        {
+          id: "depilacao-cera",
+          name: "Depilação à Cera",
+          description: "Depilação profissional com cera de alta qualidade para uma pele lisa e macia por mais tempo.",
+          preco_original: 100,
+          preco_promocional: 80,
+          category: "body",
+          fotos: [],
+        },
+        {
+          id: "epilacao-laser",
+          name: "Epilação a Laser",
+          description: "Remoção definitiva de pelos com tecnologia laser, segura e eficaz para todos os tipos de pele.",
+          preco_original: 400,
+          preco_promocional: 320,
+          category: "laser",
+          fotos: [],
+        },
+        {
+          id: "botox",
+          name: "Botox",
+          description: "Tratamento para suavizar rugas e linhas de expressão, proporcionando aspecto rejuvenescido.",
+          preco_original: 500,
+          preco_promocional: 400,
+          category: "injectable",
+          fotos: [],
+        },
+        {
+          id: "peelings",
+          name: "Peelings",
+          description: "Peelings de diamante, mar morto e outros para renovação celular e tratamento de imperfeições.",
+          preco_original: 250,
+          preco_promocional: 200,
+          category: "facial",
+          fotos: [],
+        },
+        {
+          id: "remocao-tatuagens",
+          name: "Remoção de Tatuagens",
+          description: "Remoção segura e eficaz de tatuagens com tecnologia laser de última geração.",
+          preco_original: 350,
+          preco_promocional: 280,
+          category: "laser",
+          fotos: [],
+        },
+        {
+          id: "despigmentacao-sobrancelhas",
+          name: "Despigmentação de Sobrancelhas",
+          description: "Correção da pigmentação das sobrancelhas para um visual natural e harmonioso.",
+          preco_original: 300,
+          preco_promocional: 240,
+          category: "laser",
+          fotos: [],
+        },
+        {
+          id: "lipo-enzimatica",
+          name: "Lipo Enzimática",
+          description: "Redução de medidas através da aplicação de enzimas que dissolvem a gordura localizada.",
+          preco_original: 450,
+          preco_promocional: 360,
+          category: "body",
+          fotos: [],
+        },
+        {
+          id: "hidrolipoclasia",
+          name: "Hidrolipoclasia",
+          description: "Tratamento para redução de gordura localizada através da infusão de solução fisiológica.",
+          preco_original: 500,
+          preco_promocional: 400,
+          category: "body",
+          fotos: [],
+        },
+      ]
+
+      // Verificar quais serviços já existem
+      const existingServices = await getDocs(collection(db, "servicos"))
+      const existingIds = new Set(existingServices.docs.map(doc => doc.id))
+
+      // Adicionar apenas os serviços que não existem
+      const servicesToAdd = defaultServices.filter(service => !existingIds.has(service.id))
+      
+      if (servicesToAdd.length === 0) {
+        toast({
+          title: "Informação",
+          description: "Todos os serviços já estão cadastrados",
+        })
+        return
+      }
+
+      // Adicionar serviços ao Firestore
+      for (const service of servicesToAdd) {
+        await setDoc(doc(db, "servicos", service.id), service)
+        console.log("Serviço adicionado:", service.name)
+      }
+
+      // Recarregar serviços após adicionar
+      const newServicesSnapshot = await getDocs(collection(db, "servicos"))
+      const newServicesData: Service[] = []
+      newServicesSnapshot.forEach((doc) => {
+        const data = doc.data()
+        newServicesData.push({ 
+          id: doc.id, 
+          name: data.name || "",
+          description: data.description || "",
+          preco_original: data.preco_original || 0,
+          preco_promocional: data.preco_promocional || 0,
+          category: data.category || "wellness",
+          fotos: data.fotos || [],
+          longDescription: data.longDescription,
+          benefits: data.benefits,
+          faqs: data.faqs
+        } as Service)
+      })
+      setServices(newServicesData)
+
+      toast({
+        title: "Sucesso",
+        description: `${servicesToAdd.length} serviço(s) inicializado(s) com sucesso`,
+      })
+    } catch (error) {
+      console.error("Error initializing services:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível inicializar os serviços",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const saveCombo = async (combo: Combo) => {
+    try {
+      const comboToSave = {
+        ...combo,
+        economia: combo.preco_original - combo.preco_promocional
+      }
+      if (combo.id && combos.find(c => c.id === combo.id)) {
+        await setDoc(doc(db, "combos", combo.id), comboToSave)
+      } else {
+        const newId = combo.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+        await setDoc(doc(db, "combos", newId), { ...comboToSave, id: newId })
+      }
+      toast({
+        title: "Sucesso",
+        description: "Combo salvo com sucesso",
+      })
+      setIsComboDialogOpen(false)
+      setEditingCombo(null)
+    } catch (error) {
+      console.error("Error saving combo:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar o combo",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteCombo = async (comboId: string) => {
+    try {
+      await deleteDoc(doc(db, "combos", comboId))
+      toast({
+        title: "Sucesso",
+        description: "Combo excluído com sucesso",
+      })
+    } catch (error) {
+      console.error("Error deleting combo:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o combo",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const initializeCombos = async () => {
+    try {
+      console.log("Inicializando combos padrão...")
+      const defaultCombos: Combo[] = [
+        {
+          id: "beleza-completa",
+          name: "Beleza Completa",
+          description: "Limpeza Facial + Drenagem Linfática + Acupuntura",
+          services: ["Limpeza Facial", "Drenagem Linfática", "Acupuntura"],
+          preco_original: 450,
+          preco_promocional: 350,
+          economia: 100,
+          sessions: 3,
+        },
+        {
+          id: "rejuvenescimento-total",
+          name: "Rejuvenescimento Total",
+          description: "Botox + Limpeza Facial + Drenagem",
+          services: ["Botox", "Limpeza Facial", "Drenagem Linfática"],
+          preco_original: 670,
+          preco_promocional: 550,
+          economia: 120,
+          sessions: 3,
+        },
+        {
+          id: "relaxamento-profundo",
+          name: "Relaxamento Profundo",
+          description: "Acupuntura + Massagem + Drenagem",
+          services: ["Acupuntura", "Massagens", "Drenagem Linfática"],
+          preco_original: 450,
+          preco_promocional: 320,
+          economia: 130,
+          sessions: 3,
+        },
+        {
+          id: "pele-perfeita",
+          name: "Pele Perfeita",
+          description: "Pacote de 4 Limpezas Faciais",
+          services: ["4 Sessões de Limpeza Facial"],
+          preco_original: 640,
+          preco_promocional: 420,
+          economia: 220,
+          sessions: 4,
+        },
+      ]
+
+      // Verificar quais combos já existem
+      const existingCombos = await getDocs(collection(db, "combos"))
+      const existingIds = new Set(existingCombos.docs.map(doc => doc.id))
+
+      // Adicionar apenas os combos que não existem
+      const combosToAdd = defaultCombos.filter(combo => !existingIds.has(combo.id))
+      
+      if (combosToAdd.length === 0) {
+        toast({
+          title: "Informação",
+          description: "Todos os combos já estão cadastrados",
+        })
+        return
+      }
+
+      // Adicionar combos ao Firestore
+      for (const combo of combosToAdd) {
+        const comboToSave = {
+          ...combo,
+          economia: combo.preco_original - combo.preco_promocional
+        }
+        await setDoc(doc(db, "combos", combo.id), comboToSave)
+        console.log("Combo adicionado:", combo.name)
+      }
+
+      // Recarregar combos após adicionar
+      const newCombosSnapshot = await getDocs(collection(db, "combos"))
+      const newCombosData: Combo[] = []
+      newCombosSnapshot.forEach((doc) => {
+        const data = doc.data()
+        newCombosData.push({ 
+          id: doc.id, 
+          name: data.name || "",
+          description: data.description || "",
+          services: data.services || [],
+          preco_original: data.preco_original || 0,
+          preco_promocional: data.preco_promocional || 0,
+          economia: data.economia || 0,
+          sessions: data.sessions || 1
+        } as Combo)
+      })
+      setCombos(newCombosData)
+
+      toast({
+        title: "Sucesso",
+        description: `${combosToAdd.length} combo(s) inicializado(s) com sucesso`,
+      })
+    } catch (error) {
+      console.error("Error initializing combos:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível inicializar os combos",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const saveCourse = async (course: Course) => {
+    try {
+      if (course.id && courses.find(c => c.id === course.id)) {
+        await setDoc(doc(db, "cursos", course.id), course)
+      } else {
+        const newId = course.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+        await setDoc(doc(db, "cursos", newId), { ...course, id: newId })
+      }
+      toast({
+        title: "Sucesso",
+        description: "Curso salvo com sucesso",
+      })
+      setIsCourseDialogOpen(false)
+      setEditingCourse(null)
+    } catch (error) {
+      console.error("Error saving course:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar o curso",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteCourse = async (courseId: string) => {
+    try {
+      await deleteDoc(doc(db, "cursos", courseId))
+      toast({
+        title: "Sucesso",
+        description: "Curso excluído com sucesso",
+      })
+    } catch (error) {
+      console.error("Error deleting course:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o curso",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const saveConfig = async () => {
+    try {
+      await setDoc(doc(db, "config", "main"), config)
+      toast({
+        title: "Sucesso",
+        description: "Configurações salvas com sucesso",
+      })
+      setIsConfigDialogOpen(false)
+    } catch (error) {
+      console.error("Error saving config:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar as configurações",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handlePhotoUpload = async (serviceId: string, files: FileList) => {
+    setUploadingPhotos(true)
+    try {
+      const service = services.find(s => s.id === serviceId)
+      if (!service) return
+
+      const uploadPromises = Array.from(files).map(async (file) => {
+        const storageRef = ref(storage, `servicos/${serviceId}/${Date.now()}_${file.name}`)
+        await uploadBytes(storageRef, file)
+        return await getDownloadURL(storageRef)
+      })
+
+      const urls = await Promise.all(uploadPromises)
+      const updatedFotos = [...(service.fotos || []), ...urls]
+
+      await setDoc(doc(db, "servicos", serviceId), {
+        ...service,
+        fotos: updatedFotos
+      })
+
+      toast({
+        title: "Sucesso",
+        description: "Fotos enviadas com sucesso",
+      })
+    } catch (error) {
+      console.error("Error uploading photos:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar as fotos",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingPhotos(false)
+    }
+  }
+
+  const deletePhoto = async (serviceId: string, photoUrl: string) => {
+    try {
+      const service = services.find(s => s.id === serviceId)
+      if (!service) return
+
+      // Delete from storage
+      const photoRef = ref(storage, photoUrl)
+      await deleteObject(photoRef).catch(() => {}) // Ignore errors if file doesn't exist
+
+      // Update service
+      const updatedFotos = (service.fotos || []).filter(url => url !== photoUrl)
+      await setDoc(doc(db, "servicos", serviceId), {
+        ...service,
+        fotos: updatedFotos
+      })
+
+      toast({
+        title: "Sucesso",
+        description: "Foto excluída com sucesso",
+      })
+    } catch (error) {
+      console.error("Error deleting photo:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a foto",
+        variant: "destructive",
+      })
     }
   }
 
@@ -102,14 +945,14 @@ export default function AdminDashboard() {
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r flex flex-col">
         <div className="p-6">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Adminstrativo</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h1>
         </div>
 
         <nav className="flex-1 px-4 space-y-1">
           <button
             onClick={() => setActiveTab("inicio")}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "inicio" ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "inicio" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
           >
             <Home className="h-5 w-5" />
@@ -119,17 +962,7 @@ export default function AdminDashboard() {
           <button
             onClick={() => setActiveTab("agendamentos-list")}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "agendamentos-list" ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <CalendarIcon className="h-5 w-5" />
-            <span>Agendamentos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("agendamentos")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "agendamentos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "agendamentos-list" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
             }`}
           >
             <CalendarIcon className="h-5 w-5" />
@@ -167,16 +1000,6 @@ export default function AdminDashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab("clientes")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "clientes" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Users className="h-5 w-5" />
-            <span>Clientes</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab("configuracoes")}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
               activeTab === "configuracoes" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
@@ -186,13 +1009,20 @@ export default function AdminDashboard() {
             <span>Configurações</span>
           </button>
         </nav>
+
+        <div className="p-4 border-t">
+          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
+            <LogOut className="h-5 w-5 mr-2" />
+            Sair
+          </Button>
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         {/* Header */}
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard Adminstrativo</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h2>
           <div className="flex items-center gap-4">
             <span className="text-gray-600">Afinare Estética</span>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
@@ -203,196 +1033,903 @@ export default function AdminDashboard() {
 
         {/* Content Area */}
         <div className="p-8">
-          {/* Resumo Semanal */}
-          <Card className="bg-white p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumo Semanal</h3>
-            <div className="grid grid-cols-3 gap-6">
-              <div>
-                <div className="text-sm text-gray-600 mb-1">Agendamentos</div>
-                <div className="text-4xl font-bold text-salmon-500">{stats.agendamentos}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-1">Receita Estimada</div>
-                <div className="text-4xl font-bold text-salmon-500">R$ {stats.receitaEstimada.toLocaleString()}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-1">Novos Clientes</div>
-                <div className="text-4xl font-bold text-salmon-500">R$ {stats.novosClientes}</div>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid lg:grid-cols-2 gap-6 mb-6">
-            {/* Calendar Widget */}
-            <Card className="bg-white p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex gap-2 text-xs text-gray-500">
-                  <span>Sumo</span>
-                  <span>Meng</span>
-                  <span>Tegg</span>
-                  <span>Dago</span>
-                  <span>Tite</span>
-                  <span>Thal</span>
-                  <span>Fasb</span>
-                  <span>Ações</span>
+          {activeTab === "inicio" && (
+            <>
+              {/* Resumo Semanal */}
+              <Card className="bg-white p-6 mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumo Semanal</h3>
+                <div className="grid grid-cols-3 gap-6">
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">Agendamentos</div>
+                    <div className="text-4xl font-bold text-salmon-500">{stats.agendamentos}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">Receita Estimada</div>
+                    <div className="text-4xl font-bold text-salmon-500">R$ {stats.receitaEstimada.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">Novos Clientes</div>
+                    <div className="text-4xl font-bold text-salmon-500">{stats.novosClientes}</div>
+                  </div>
                 </div>
+              </Card>
+
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Calendar Widget */}
+                <Card className="bg-white p-6">
+                  <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={setDate}
+                    className="rounded-md"
+                  />
+                </Card>
+
+                {/* Próximos Agendamentos */}
+                <Card className="bg-white p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Próximos Agendamentos</h3>
+                  <div className="space-y-4">
+                    {proximosAgendamentos.length > 0 ? (
+                      proximosAgendamentos.map((app, idx) => (
+                        <div key={app.id} className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                            <Image
+                              src={`https://i.pravatar.cc/150?img=${idx + 1}`}
+                              alt={app.clienteNome}
+                              width={40}
+                              height={40}
+                              className="object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900">
+                              {app.data} {app.hora} - {app.servicoNome}
+                            </div>
+                            <div className="text-sm text-gray-500">{app.clienteNome}</div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Confirmado</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">Nenhum agendamento próximo</p>
+                    )}
+                  </div>
+                </Card>
               </div>
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={setDate}
-                className="rounded-md"
-                classNames={{
-                  months: "flex flex-col",
-                  month: "space-y-4",
-                  caption: "flex justify-center pt-1 relative items-center mb-4",
-                  caption_label: "text-sm font-medium",
-                  nav: "space-x-1 flex items-center",
-                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-                  nav_button_previous: "absolute left-1",
-                  nav_button_next: "absolute right-1",
-                  table: "w-full border-collapse",
-                  head_row: "flex",
-                  head_cell: "text-gray-400 rounded-md w-full font-normal text-xs",
-                  row: "flex w-full mt-1",
-                  cell: "text-center text-sm p-0 relative flex-1",
-                  day: "h-10 w-full p-0 font-normal hover:bg-gray-100 rounded-md",
-                  day_selected: "bg-salmon-500 text-white hover:bg-salmon-600",
-                  day_today: "bg-salmon-100 text-salmon-600",
-                  day_outside: "text-gray-300 opacity-50",
-                }}
-              />
-              <div className="flex justify-end mt-4">
-                <Button
-                  variant="outline"
-                  className="text-salmon-500 border-salmon-500 hover:bg-salmon-50 bg-transparent"
-                >
-                  Editar
-                </Button>
+            </>
+          )}
+
+          {activeTab === "agendamentos-list" && (
+            <Card className="bg-white p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Todos os Agendamentos</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Cliente</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Serviço</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Data</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Hora</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Status</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appointments.map((app) => (
+                      <tr key={app.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">
+                          <div>
+                            <div className="font-medium text-gray-900">{app.clienteNome}</div>
+                            <div className="text-sm text-gray-500">{app.clienteEmail}</div>
+                            <div className="text-sm text-gray-500">{app.clientePhone}</div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-gray-900">{app.servicoNome}</div>
+                          <div className="text-sm text-gray-500">R$ {app.servicoPreco}</div>
+                        </td>
+                        <td className="py-3 px-4 text-gray-900">{app.data}</td>
+                        <td className="py-3 px-4 text-gray-900">{app.hora}</td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`text-xs px-2 py-1 rounded ${
+                              app.status === "concluido"
+                                ? "bg-green-100 text-green-700"
+                                : app.status === "cancelado"
+                                ? "bg-red-100 text-red-700"
+                                : app.status === "confirmado"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-yellow-100 text-yellow-700"
+                            }`}
+                          >
+                            {app.status === "concluido"
+                              ? "Concluído"
+                              : app.status === "cancelado"
+                              ? "Cancelado"
+                              : app.status === "confirmado"
+                              ? "Confirmado"
+                              : "Pendente"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            {app.status !== "concluido" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                                onClick={() => updateAppointmentStatus(app.id, "concluido")}
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
+                                Concluir
+                              </Button>
+                            )}
+                            {app.status !== "cancelado" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-600 hover:bg-red-50"
+                                onClick={() => updateAppointmentStatus(app.id, "cancelado")}
+                              >
+                                <XCircle className="h-4 w-4 mr-1" />
+                                Cancelar
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {appointments.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">Nenhum agendamento encontrado</div>
+                )}
               </div>
             </Card>
+          )}
 
-            {/* Próximos Agendamentos */}
+          {activeTab === "servicos" && (
             <Card className="bg-white p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Próximos Agendamentos</h3>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Gerenciar Serviços</h3>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={initializeServices}
+                    variant="outline"
+                    className="border-salmon-500 text-salmon-600 hover:bg-salmon-50"
+                  >
+                    Inicializar Serviços Padrão
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditingService({
+                        id: "",
+                        name: "",
+                        description: "",
+                        preco_original: 0,
+                        preco_promocional: 0,
+                        category: "laser",
+                        fotos: []
+                      })
+                      setIsServiceDialogOpen(true)
+                    }}
+                    className="bg-salmon-500 hover:bg-salmon-600 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Serviço
+                  </Button>
+                </div>
+              </div>
               <div className="space-y-4">
-                {proximosAgendamentos.map((app, idx) => (
-                  <div key={app.id} className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                      <Image
-                        src={`https://i.pravatar.cc/150?img=${idx + 1}`}
-                        alt={app.clienteNome}
-                        width={40}
-                        height={40}
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900">
-                        {app.data.includes("14:00") ? "Hoje, 14:00" : "Amanhã 09:30"} - {app.servicoNome}
+                {services.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 mb-4">Nenhum serviço cadastrado ainda.</p>
+                    <p className="text-sm text-gray-400 mb-4">
+                      Clique em "Inicializar Serviços Padrão" para criar os serviços padrão ou adicione um novo serviço.
+                    </p>
+                  </div>
+                ) : (
+                  services.map((service) => (
+                    <div key={service.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900">{service.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{service.description}</p>
+                          <div className="mt-2 flex gap-4 text-sm">
+                            <span className="text-gray-500">
+                              Original: <span className="line-through">R$ {service.preco_original}</span>
+                            </span>
+                            <span className="text-salmon-600 font-semibold">
+                              Promocional: R$ {service.preco_promocional}
+                            </span>
+                          </div>
+                          {service.fotos && service.fotos.length > 0 && (
+                            <div className="mt-3 flex gap-2 flex-wrap">
+                              {service.fotos.map((foto, idx) => (
+                                <div key={idx} className="relative w-20 h-20 rounded overflow-hidden">
+                                  <Image src={foto} alt={`Foto ${idx + 1}`} fill className="object-cover" />
+                                  <button
+                                    onClick={() => deletePhoto(service.id, foto)}
+                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingService(service)
+                              setIsServiceDialogOpen(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                            onClick={() => {
+                              setEditingService(service)
+                              setIsServiceDetailsDialogOpen(true)
+                            }}
+                          >
+                            <Settings className="h-4 w-4 mr-1" />
+                            Detalhes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              if (confirm("Tem certeza que deseja excluir este serviço?")) {
+                                deleteService(service.id)
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Excluir
+                          </Button>
+                          <div className="relative">
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*"
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              onChange={(e) => {
+                                if (e.target.files) {
+                                  handlePhotoUpload(service.id, e.target.files)
+                                }
+                              }}
+                              disabled={uploadingPhotos}
+                            />
+                            <Button size="sm" variant="outline" disabled={uploadingPhotos}>
+                              <Upload className="h-4 w-4 mr-1" />
+                              {uploadingPhotos ? "Enviando..." : "Fotos"}
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500">({app.clienteNome})</div>
                     </div>
-                    <div className="flex-shrink-0">
-                      <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Confirmado</span>
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === "combos" && (
+            <Card className="bg-white p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Gerenciar Combos</h3>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={initializeCombos}
+                    variant="outline"
+                    className="border-salmon-500 text-salmon-600 hover:bg-salmon-50"
+                  >
+                    Inicializar Combos Padrão
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditingCombo({
+                        id: "",
+                        name: "",
+                        description: "",
+                        services: [],
+                        preco_original: 0,
+                        preco_promocional: 0,
+                        economia: 0,
+                        sessions: 1
+                      })
+                      setIsComboDialogOpen(true)
+                    }}
+                    className="bg-salmon-500 hover:bg-salmon-600 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Combo
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {combos.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 mb-4">Nenhum combo cadastrado ainda.</p>
+                    <p className="text-sm text-gray-400 mb-4">
+                      Clique em "Inicializar Combos Padrão" para criar os combos padrão ou adicione um novo combo.
+                    </p>
+                  </div>
+                ) : (
+                  combos.map((combo) => (
+                  <div key={combo.id} className="border rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900">{combo.name}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{combo.description}</p>
+                        <div className="mt-2 flex gap-4 text-sm">
+                          <span className="text-gray-500">
+                            Original: <span className="line-through">R$ {combo.preco_original}</span>
+                          </span>
+                          <span className="text-salmon-600 font-semibold">
+                            Promocional: R$ {combo.preco_promocional}
+                          </span>
+                          <span className="text-green-600">Economia: R$ {combo.economia}</span>
+                        </div>
+                        <div className="mt-2 text-sm text-gray-600">
+                          Serviços: {combo.services.join(", ")}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingCombo(combo)
+                            setIsComboDialogOpen(true)
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-600 hover:bg-red-50"
+                          onClick={() => {
+                            if (confirm("Tem certeza que deseja excluir este combo?")) {
+                              deleteCombo(combo.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === "cursos" && (
+            <Card className="bg-white p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Gerenciar Cursos</h3>
+                <Button
+                  onClick={() => {
+                    setEditingCourse({
+                      id: "",
+                      name: "",
+                      description: "",
+                      preco: 0,
+                      duration: "",
+                      format: "",
+                      certificate: "",
+                      students: "",
+                      benefits: [],
+                      modules: [],
+                      targetAudience: []
+                    })
+                    setIsCourseDialogOpen(true)
+                  }}
+                  className="bg-salmon-500 hover:bg-salmon-600 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Curso
+                </Button>
+              </div>
+              <div className="space-y-4">
+                {courses.map((course) => (
+                  <div key={course.id} className="border rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900">{course.name}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{course.description}</p>
+                        <div className="mt-2 flex gap-4 text-sm">
+                          <span className="text-salmon-600 font-semibold">R$ {course.preco.toLocaleString()}</span>
+                          <span className="text-gray-500">{course.duration}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingCourse(course)
+                            setIsCourseDialogOpen(true)
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-600 hover:bg-red-50"
+                          onClick={() => {
+                            if (confirm("Tem certeza que deseja excluir este curso?")) {
+                              deleteCourse(course.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Excluir
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
             </Card>
-          </div>
+          )}
 
-          <div className="grid lg:grid-cols-2 gap-6">
-            {/* Gestão de Conteúdo */}
+          {activeTab === "configuracoes" && (
             <Card className="bg-white p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Gestão de Conteúdo</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm pb-2 border-b text-gray-600 font-medium">
-                  <span>Serviço</span>
-                  <span>Preço Original</span>
-                  <span>Preço Promocional</span>
-                  <span>Ações</span>
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-900">Serviços & Laser</span>
-                  <span className="text-sm text-gray-900">R$ 300</span>
-                  <span className="text-sm text-gray-900">-</span>
-                  <Button variant="outline" size="sm" className="text-salmon-500 border-salmon-500 bg-transparent">
-                    Editar
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-900">Remove dor</span>
-                  <span className="text-sm text-gray-900">R$ 250</span>
-                  <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Confirmado</span>
-                  <Button variant="outline" size="sm" className="text-salmon-500 border-salmon-500 bg-transparent">
-                    Editar
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-900">Maloal ro</span>
-                  <span className="text-sm text-gray-900">R$ 250</span>
-                  <span className="text-sm text-gray-900">-</span>
-                  <Button variant="outline" size="sm" className="text-red-500 border-red-500 bg-transparent">
-                    Excluir
-                  </Button>
-                </div>
-
-                <Button className="w-full mt-4 bg-salmon-500 hover:bg-salmon-600 text-white">
-                  + Adicionar Nova Foto
-                </Button>
-              </div>
-            </Card>
-
-            {/* Galeria de Fotos */}
-            <Card className="bg-white p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Galeria de Fotos</h3>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Configurações</h3>
                 <Button
-                  variant="outline"
-                  className="text-salmon-500 border-salmon-500 hover:bg-salmon-50 bg-transparent"
+                  onClick={() => setIsConfigDialogOpen(true)}
+                  className="bg-salmon-500 hover:bg-salmon-600 text-white"
                 >
-                  Excitar
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar Configurações
                 </Button>
               </div>
-
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Antes e Deptos</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                      <Image
-                        src={`https://images.unsplash.com/photo-${1629909613654 + i * 100}-28e377c37b09?w=200&h=200&fit=crop`}
-                        alt={`Foto ${i}`}
-                        fill
-                        className="object-cover"
-                      />
-                      <div className="absolute bottom-1 left-1">
-                        <span className="text-[10px] px-1.5 py-0.5 bg-salmon-500 text-white rounded">
-                          Antes e Depres
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-2">Informações de Contato</h4>
+                  <div className="space-y-1 text-sm text-gray-700">
+                    <p>WhatsApp: {config.whatsapp}</p>
+                    <p>Instagram: {config.instagram}</p>
+                    <p>Endereço: {config.endereco}</p>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-2">Horários de Funcionamento</h4>
+                  <div className="space-y-1 text-sm text-gray-700">
+                    <p>{config.horarios.semana}</p>
+                    <p>{config.horarios.sabado}</p>
+                  </div>
                 </div>
               </div>
             </Card>
-          </div>
-
-          {/* Configurações de Contato */}
-          <Card className="bg-white p-6 mt-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Configurações de Contato:</h3>
-            <div className="space-y-1 text-sm text-gray-700">
-              <p>WhatsApp: (61, 98653099</p>
-              <p>Instagram @afinare.estetica</p>
-              <p>Local: CLN 103...</p>
-            </div>
-          </Card>
+          )}
         </div>
       </main>
+
+      {/* Service Dialog */}
+      <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingService?.id ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
+          </DialogHeader>
+          {editingService && (
+            <div className="space-y-4">
+              <div>
+                <Label>Nome do Serviço</Label>
+                <Input
+                  value={editingService.name}
+                  onChange={(e) => setEditingService({ ...editingService, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea
+                  value={editingService.description}
+                  onChange={(e) => setEditingService({ ...editingService, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Preço Original</Label>
+                  <Input
+                    type="number"
+                    value={editingService.preco_original}
+                    onChange={(e) =>
+                      setEditingService({ ...editingService, preco_original: parseFloat(e.target.value) || 0 })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Preço Promocional</Label>
+                  <Input
+                    type="number"
+                    value={editingService.preco_promocional}
+                    onChange={(e) =>
+                      setEditingService({ ...editingService, preco_promocional: parseFloat(e.target.value) || 0 })
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Categoria</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                  value={editingService.category}
+                  onChange={(e) => setEditingService({ ...editingService, category: e.target.value })}
+                >
+                  <option value="laser">Laser</option>
+                  <option value="facial">Facial</option>
+                  <option value="wellness">Wellness</option>
+                  <option value="injectable">Injectable</option>
+                  <option value="body">Body</option>
+                </select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsServiceDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => saveService(editingService)} className="bg-salmon-500 hover:bg-salmon-600">
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Service Details Dialog */}
+      <Dialog open={isServiceDetailsDialogOpen} onOpenChange={setIsServiceDetailsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Detalhes - {editingService?.name}</DialogTitle>
+          </DialogHeader>
+          {editingService && (
+            <div className="space-y-4">
+              <div>
+                <Label>Descrição Longa</Label>
+                <Textarea
+                  value={editingService.longDescription || ""}
+                  onChange={(e) => setEditingService({ ...editingService, longDescription: e.target.value })}
+                  rows={5}
+                  placeholder="Descrição detalhada do tratamento..."
+                />
+              </div>
+              <div>
+                <Label>Duração (ex: 60 min, 30-60 min)</Label>
+                <Input
+                  value={editingService.duration || ""}
+                  onChange={(e) => setEditingService({ ...editingService, duration: e.target.value })}
+                  placeholder="60 min"
+                />
+              </div>
+              <div>
+                <Label>Benefícios (um por linha)</Label>
+                <Textarea
+                  value={(editingService.benefits || []).join("\n")}
+                  onChange={(e) =>
+                    setEditingService({
+                      ...editingService,
+                      benefits: e.target.value.split("\n").filter(Boolean),
+                    })
+                  }
+                  rows={6}
+                  placeholder="Benefício 1&#10;Benefício 2&#10;Benefício 3"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Digite um benefício por linha</p>
+              </div>
+              <div>
+                <Label>Perguntas Frequentes</Label>
+                <div className="space-y-3 mt-2">
+                  {(editingService.faqs || []).map((faq, index) => (
+                    <div key={index} className="border rounded p-3 space-y-2">
+                      <div>
+                        <Label className="text-xs">Pergunta {index + 1}</Label>
+                        <Input
+                          value={faq.question}
+                          onChange={(e) => {
+                            const newFaqs = [...(editingService.faqs || [])]
+                            newFaqs[index] = { ...newFaqs[index], question: e.target.value }
+                            setEditingService({ ...editingService, faqs: newFaqs })
+                          }}
+                          placeholder="Pergunta..."
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Resposta {index + 1}</Label>
+                        <Textarea
+                          value={faq.answer}
+                          onChange={(e) => {
+                            const newFaqs = [...(editingService.faqs || [])]
+                            newFaqs[index] = { ...newFaqs[index], answer: e.target.value }
+                            setEditingService({ ...editingService, faqs: newFaqs })
+                          }}
+                          rows={2}
+                          placeholder="Resposta..."
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 border-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          const newFaqs = (editingService.faqs || []).filter((_, i) => i !== index)
+                          setEditingService({ ...editingService, faqs: newFaqs })
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Remover
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingService({
+                        ...editingService,
+                        faqs: [...(editingService.faqs || []), { question: "", answer: "" }],
+                      })
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Adicionar FAQ
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsServiceDetailsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => {
+                    saveService(editingService)
+                    setIsServiceDetailsDialogOpen(false)
+                  }}
+                  className="bg-salmon-500 hover:bg-salmon-600"
+                >
+                  Salvar Detalhes
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Combo Dialog */}
+      <Dialog open={isComboDialogOpen} onOpenChange={setIsComboDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingCombo?.id ? "Editar Combo" : "Novo Combo"}</DialogTitle>
+          </DialogHeader>
+          {editingCombo && (
+            <div className="space-y-4">
+              <div>
+                <Label>Nome do Combo</Label>
+                <Input
+                  value={editingCombo.name}
+                  onChange={(e) => setEditingCombo({ ...editingCombo, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea
+                  value={editingCombo.description}
+                  onChange={(e) => setEditingCombo({ ...editingCombo, description: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Serviços (separados por vírgula)</Label>
+                <Input
+                  value={editingCombo.services.join(", ")}
+                  onChange={(e) =>
+                    setEditingCombo({
+                      ...editingCombo,
+                      services: e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
+                    })
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Preço Original</Label>
+                  <Input
+                    type="number"
+                    value={editingCombo.preco_original}
+                    onChange={(e) =>
+                      setEditingCombo({ ...editingCombo, preco_original: parseFloat(e.target.value) || 0 })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Preço Promocional</Label>
+                  <Input
+                    type="number"
+                    value={editingCombo.preco_promocional}
+                    onChange={(e) =>
+                      setEditingCombo({ ...editingCombo, preco_promocional: parseFloat(e.target.value) || 0 })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Sessões</Label>
+                  <Input
+                    type="number"
+                    value={editingCombo.sessions}
+                    onChange={(e) =>
+                      setEditingCombo({ ...editingCombo, sessions: parseInt(e.target.value) || 1 })
+                    }
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsComboDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => saveCombo(editingCombo)} className="bg-salmon-500 hover:bg-salmon-600">
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Course Dialog */}
+      <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingCourse?.id ? "Editar Curso" : "Novo Curso"}</DialogTitle>
+          </DialogHeader>
+          {editingCourse && (
+            <div className="space-y-4">
+              <div>
+                <Label>Nome do Curso</Label>
+                <Input
+                  value={editingCourse.name}
+                  onChange={(e) => setEditingCourse({ ...editingCourse, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea
+                  value={editingCourse.description}
+                  onChange={(e) => setEditingCourse({ ...editingCourse, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Preço</Label>
+                  <Input
+                    type="number"
+                    value={editingCourse.preco}
+                    onChange={(e) =>
+                      setEditingCourse({ ...editingCourse, preco: parseFloat(e.target.value) || 0 })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Duração</Label>
+                  <Input
+                    value={editingCourse.duration}
+                    onChange={(e) => setEditingCourse({ ...editingCourse, duration: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Formato</Label>
+                  <Input
+                    value={editingCourse.format}
+                    onChange={(e) => setEditingCourse({ ...editingCourse, format: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Certificado</Label>
+                  <Input
+                    value={editingCourse.certificate}
+                    onChange={(e) => setEditingCourse({ ...editingCourse, certificate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Turmas</Label>
+                <Input
+                  value={editingCourse.students}
+                  onChange={(e) => setEditingCourse({ ...editingCourse, students: e.target.value })}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCourseDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => saveCourse(editingCourse)} className="bg-salmon-500 hover:bg-salmon-600">
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Config Dialog */}
+      <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar Configurações</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>WhatsApp</Label>
+              <Input
+                value={config.whatsapp}
+                onChange={(e) => setConfig({ ...config, whatsapp: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Instagram</Label>
+              <Input
+                value={config.instagram}
+                onChange={(e) => setConfig({ ...config, instagram: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Endereço</Label>
+              <Textarea
+                value={config.endereco}
+                onChange={(e) => setConfig({ ...config, endereco: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Horário Semana</Label>
+              <Input
+                value={config.horarios.semana}
+                onChange={(e) =>
+                  setConfig({ ...config, horarios: { ...config.horarios, semana: e.target.value } })
+                }
+              />
+            </div>
+            <div>
+              <Label>Horário Sábado</Label>
+              <Input
+                value={config.horarios.sabado}
+                onChange={(e) =>
+                  setConfig({ ...config, horarios: { ...config.horarios, sabado: e.target.value } })
+                }
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={saveConfig} className="bg-salmon-500 hover:bg-salmon-600">
+                Salvar
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Toaster />
     </div>
   )

@@ -12,22 +12,46 @@ import Link from "next/link"
 
 const services = [
   {
-    id: "remocao-tatuagem",
-    name: "Remoção de Tatuagem a Laser",
-    preco_original: 350,
-    preco_promocional: 250,
-  },
-  {
-    id: "acupuntura-massagem",
-    name: "Acupuntura + Massagem",
+    id: "massagens",
+    name: "Massagens",
     preco_original: 200,
     preco_promocional: 150,
   },
   {
     id: "limpeza-facial",
-    name: "Limpeza Facial Profunda",
+    name: "Limpeza Facial",
     preco_original: 160,
     preco_promocional: 120,
+  },
+  {
+    id: "acupuntura",
+    name: "Acupuntura",
+    preco_original: 180,
+    preco_promocional: 140,
+  },
+  {
+    id: "terapias-combinadas",
+    name: "Terapias Combinadas",
+    preco_original: 300,
+    preco_promocional: 250,
+  },
+  {
+    id: "criolipolise",
+    name: "Criolipólise",
+    preco_original: 800,
+    preco_promocional: 650,
+  },
+  {
+    id: "depilacao-cera",
+    name: "Depilação à Cera",
+    preco_original: 100,
+    preco_promocional: 80,
+  },
+  {
+    id: "epilacao-laser",
+    name: "Epilação a Laser",
+    preco_original: 400,
+    preco_promocional: 320,
   },
   {
     id: "botox",
@@ -36,16 +60,40 @@ const services = [
     preco_promocional: 400,
   },
   {
-    id: "drenagem-linfatica",
-    name: "Drenagem Linfática",
-    preco_original: 170,
-    preco_promocional: 130,
+    id: "peelings",
+    name: "Peelings",
+    preco_original: 250,
+    preco_promocional: 200,
+  },
+  {
+    id: "remocao-tatuagens",
+    name: "Remoção de Tatuagens",
+    preco_original: 350,
+    preco_promocional: 280,
+  },
+  {
+    id: "despigmentacao-sobrancelhas",
+    name: "Despigmentação de Sobrancelhas",
+    preco_original: 300,
+    preco_promocional: 240,
+  },
+  {
+    id: "lipo-enzimatica",
+    name: "Lipo Enzimática",
+    preco_original: 450,
+    preco_promocional: 360,
+  },
+  {
+    id: "hidrolipoclasia",
+    name: "Hidrolipoclasia",
+    preco_original: 500,
+    preco_promocional: 400,
   },
 ]
 
 export default function HomePage() {
   const [date, setDate] = useState<Date | undefined>(new Date())
-  const [selectedService, setSelectedService] = useState<string>("remocao-tatuagem")
+  const [selectedService, setSelectedService] = useState<string>("massagens")
   
   const currentService = services.find(s => s.id === selectedService) || services[0]
 
@@ -251,30 +299,14 @@ export default function HomePage() {
           <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Serviços</h2>
 
           <div className="flex flex-wrap justify-center gap-4 max-w-4xl mx-auto">
-            {/* Service 1 */}
-            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
-              Remoção a Laser
-            </div>
-
-            {/* Service 2 */}
-            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
-              Acupuntura + Massagem
-            </div>
-
-            {/* Service 3 */}
-            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
-              Limpeza Facial
-            </div>
-
-            {/* Service 4 */}
-            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
-              Botox
-            </div>
-
-            {/* Service 5 */}
-            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
-              Drenagem Botox
-            </div>
+            {services.slice(0, 8).map((service) => (
+              <div
+                key={service.id}
+                className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium"
+              >
+                {service.name}
+              </div>
+            ))}
           </div>
         </div>
       </section>

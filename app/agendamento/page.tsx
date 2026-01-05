@@ -13,11 +13,19 @@ import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
 const services = [
-  { id: "remocao-tatuagem", name: "Remoção de Tatuagem a Laser", price: 250 },
-  { id: "acupuntura-massagem", name: "Acupuntura + Massagem", price: 150 },
-  { id: "limpeza-facial", name: "Limpeza Facial Profunda", price: 120 },
+  { id: "massagens", name: "Massagens", price: 150 },
+  { id: "limpeza-facial", name: "Limpeza Facial", price: 120 },
+  { id: "acupuntura", name: "Acupuntura", price: 140 },
+  { id: "terapias-combinadas", name: "Terapias Combinadas", price: 250 },
+  { id: "criolipolise", name: "Criolipólise", price: 650 },
+  { id: "depilacao-cera", name: "Depilação à Cera", price: 80 },
+  { id: "epilacao-laser", name: "Epilação a Laser", price: 320 },
   { id: "botox", name: "Botox", price: 400 },
-  { id: "drenagem-linfatica", name: "Drenagem Linfática", price: 130 },
+  { id: "peelings", name: "Peelings", price: 200 },
+  { id: "remocao-tatuagens", name: "Remoção de Tatuagens", price: 280 },
+  { id: "despigmentacao-sobrancelhas", name: "Despigmentação de Sobrancelhas", price: 240 },
+  { id: "lipo-enzimatica", name: "Lipo Enzimática", price: 360 },
+  { id: "hidrolipoclasia", name: "Hidrolipoclasia", price: 400 },
 ]
 
 const timeSlots = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"]
