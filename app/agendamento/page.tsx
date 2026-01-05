@@ -1,37 +1,28 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Clock } from "lucide-react"
-import { collection, addDoc, Timestamp } from "firebase/firestore"
+import { CalendarIcon, Clock, X } from "lucide-react"
+import { collection, addDoc, getDocs, query, where, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
-const services = [
-  { id: "massagens", name: "Massagens", price: 150 },
-  { id: "limpeza-facial", name: "Limpeza Facial", price: 120 },
-  { id: "acupuntura", name: "Acupuntura", price: 140 },
-  { id: "terapias-combinadas", name: "Terapias Combinadas", price: 250 },
-  { id: "criolipolise", name: "Criolipólise", price: 650 },
-  { id: "depilacao-cera", name: "Depilação à Cera", price: 80 },
-  { id: "epilacao-laser", name: "Epilação a Laser", price: 320 },
-  { id: "botox", name: "Botox", price: 400 },
-  { id: "peelings", name: "Peelings", price: 200 },
-  { id: "remocao-tatuagens", name: "Remoção de Tatuagens", price: 280 },
-  { id: "despigmentacao-sobrancelhas", name: "Despigmentação de Sobrancelhas", price: 240 },
-  { id: "lipo-enzimatica", name: "Lipo Enzimática", price: 360 },
-  { id: "hidrolipoclasia", name: "Hidrolipoclasia", price: 400 },
-]
+interface Service {
+  id: string
+  name: string
+  preco_promocional: number
+}
 
 const timeSlots = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"]
 
 export default function AgendamentoPage() {
   const [step, setStep] = useState(1)
+  const [services, setServices] = useState<Service[]>([])
   const [selectedService, setSelectedService] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [selectedTime, setSelectedTime] = useState("")
@@ -39,14 +30,90 @@ export default function AgendamentoPage() {
   const [clientEmail, setClientEmail] = useState("")
   const [clientPhone, setClientPhone] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loadingServices, setLoadingServices] = useState(true)
+  const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set())
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
 
   const { toast } = useToast()
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const servicesSnapshot = await getDocs(collection(db, "servicos"))
+        const servicesData: Service[] = []
+        servicesSnapshot.forEach((doc) => {
+          const data = doc.data()
+          servicesData.push({
+            id: doc.id,
+            name: data.name || "",
+            preco_promocional: data.preco_promocional || 0,
+          })
+        })
+        setServices(servicesData)
+      } catch (error) {
+        console.error("Error loading services:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os serviços",
+          variant: "destructive",
+        })
+      } finally {
+        setLoadingServices(false)
+      }
+    }
+
+    loadServices()
+  }, [toast])
+
+  useEffect(() => {
+    const loadAvailability = async () => {
+      if (!selectedDate) {
+        setBookedSlots(new Set())
+        return
+      }
+
+      setLoadingAvailability(true)
+      try {
+        const formattedDate = selectedDate.toLocaleDateString("pt-BR")
+        const appointmentsQuery = query(
+          collection(db, "agendamentos"),
+          where("data", "==", formattedDate),
+          where("status", "in", ["pendente", "confirmado"])
+        )
+        const appointmentsSnapshot = await getDocs(appointmentsQuery)
+        const booked = new Set<string>()
+        appointmentsSnapshot.forEach((doc) => {
+          const data = doc.data()
+          if (data.hora) {
+            booked.add(data.hora)
+          }
+        })
+        setBookedSlots(booked)
+      } catch (error) {
+        console.error("Error loading availability:", error)
+      } finally {
+        setLoadingAvailability(false)
+      }
+    }
+
+    loadAvailability()
+  }, [selectedDate])
 
   const handleSubmit = async () => {
     if (!selectedService || !selectedDate || !selectedTime || !clientName || !clientEmail || !clientPhone) {
       toast({
         title: "Campos obrigatórios",
         description: "Por favor, preencha todos os campos",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Verificar se o horário ainda está disponível
+    if (bookedSlots.has(selectedTime)) {
+      toast({
+        title: "Horário indisponível",
+        description: "Este horário foi ocupado. Por favor, escolha outro.",
         variant: "destructive",
       })
       return
@@ -65,7 +132,7 @@ export default function AgendamentoPage() {
         clientePhone: clientPhone,
         servicoId: selectedService,
         servicoNome: service?.name,
-        servicoPreco: service?.price,
+        servicoPreco: service?.preco_promocional,
         data: formattedDate,
         hora: selectedTime,
         status: "pendente",
@@ -91,7 +158,7 @@ export default function AgendamentoPage() {
       setClientEmail("")
       setClientPhone("")
     } catch (error) {
-      console.error("[v0] Error creating appointment:", error)
+      console.error("Error creating appointment:", error)
       toast({
         title: "Erro ao agendar",
         description: "Ocorreu um erro. Por favor, tente novamente.",
@@ -100,6 +167,29 @@ export default function AgendamentoPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const getAvailableDates = () => {
+    const today = new Date()
+    const maxDate = new Date()
+    maxDate.setDate(today.getDate() + 60) // 60 dias à frente
+    return { min: today, max: maxDate }
+  }
+
+  const isDateDisabled = (date: Date) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const checkDate = new Date(date)
+    checkDate.setHours(0, 0, 0, 0)
+    return checkDate < today || date.getDay() === 0 // Desabilita domingos
+  }
+
+  if (loadingServices) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Carregando serviços...</p>
+      </div>
+    )
   }
 
   return (
@@ -161,29 +251,33 @@ export default function AgendamentoPage() {
               {/* Step 1: Service Selection */}
               {step === 1 && (
                 <div className="space-y-3">
-                  {services.map((service) => (
-                    <button
-                      key={service.id}
-                      onClick={() => setSelectedService(service.id)}
-                      className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                        selectedService === service.id
-                          ? "border-salmon-600 bg-salmon-50"
-                          : "border-border hover:border-salmon-300"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold">{service.name}</p>
-                          <p className="text-sm text-salmon-600 font-semibold mt-1">R$ {service.price}</p>
-                        </div>
-                        {selectedService === service.id && (
-                          <div className="h-6 w-6 rounded-full bg-salmon-600 text-white flex items-center justify-center">
-                            ✓
+                  {services.length > 0 ? (
+                    services.map((service) => (
+                      <button
+                        key={service.id}
+                        onClick={() => setSelectedService(service.id)}
+                        className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                          selectedService === service.id
+                            ? "border-salmon-600 bg-salmon-50"
+                            : "border-border hover:border-salmon-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold">{service.name}</p>
+                            <p className="text-sm text-salmon-600 font-semibold mt-1">R$ {service.preco_promocional}</p>
                           </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                          {selectedService === service.id && (
+                            <div className="h-6 w-6 rounded-full bg-salmon-600 text-white flex items-center justify-center">
+                              ✓
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">Nenhum serviço disponível no momento.</p>
+                  )}
 
                   <Button
                     onClick={() => setStep(2)}
@@ -207,7 +301,7 @@ export default function AgendamentoPage() {
                       mode="single"
                       selected={selectedDate}
                       onSelect={setSelectedDate}
-                      disabled={(date) => date < new Date() || date.getDay() === 0}
+                      disabled={isDateDisabled}
                       className="rounded-md border mx-auto"
                     />
                   </div>
@@ -216,23 +310,37 @@ export default function AgendamentoPage() {
                     <div>
                       <Label className="flex items-center gap-2 mb-3">
                         <Clock className="h-4 w-4" />
-                        Escolha o Horário
+                        Escolha o Horário {loadingAvailability && "(Carregando...)"}
                       </Label>
                       <div className="grid grid-cols-3 gap-2">
-                        {timeSlots.map((time) => (
-                          <button
-                            key={time}
-                            onClick={() => setSelectedTime(time)}
-                            className={`p-3 text-sm rounded-lg border-2 transition-all ${
-                              selectedTime === time
-                                ? "border-salmon-600 bg-salmon-50 font-semibold"
-                                : "border-border hover:border-salmon-300"
-                            }`}
-                          >
-                            {time}
-                          </button>
-                        ))}
+                        {timeSlots.map((time) => {
+                          const isBooked = bookedSlots.has(time)
+                          return (
+                            <button
+                              key={time}
+                              onClick={() => !isBooked && setSelectedTime(time)}
+                              disabled={isBooked}
+                              className={`p-3 text-sm rounded-lg border-2 transition-all ${
+                                isBooked
+                                  ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : selectedTime === time
+                                  ? "border-salmon-600 bg-salmon-50 font-semibold"
+                                  : "border-border hover:border-salmon-300"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{time}</span>
+                                {isBooked && <X className="h-4 w-4" />}
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
+                      {bookedSlots.size > 0 && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {bookedSlots.size} horário(s) já ocupado(s) neste dia
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -302,7 +410,7 @@ export default function AgendamentoPage() {
                         </p>
                         <p>
                           <span className="font-medium">Valor:</span> R${" "}
-                          {services.find((s) => s.id === selectedService)?.price}
+                          {services.find((s) => s.id === selectedService)?.preco_promocional}
                         </p>
                       </div>
                     </CardContent>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
@@ -9,97 +9,94 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Zap, Syringe, Flower2, Wind, Sparkles, MapPin, Phone, Calendar as CalendarIcon } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import { collection, getDocs, query, where } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
-const services = [
-  {
-    id: "massagens",
-    name: "Massagens",
-    preco_original: 200,
-    preco_promocional: 150,
-  },
-  {
-    id: "limpeza-facial",
-    name: "Limpeza Facial",
-    preco_original: 160,
-    preco_promocional: 120,
-  },
-  {
-    id: "acupuntura",
-    name: "Acupuntura",
-    preco_original: 180,
-    preco_promocional: 140,
-  },
-  {
-    id: "terapias-combinadas",
-    name: "Terapias Combinadas",
-    preco_original: 300,
-    preco_promocional: 250,
-  },
-  {
-    id: "criolipolise",
-    name: "Criolipólise",
-    preco_original: 800,
-    preco_promocional: 650,
-  },
-  {
-    id: "depilacao-cera",
-    name: "Depilação à Cera",
-    preco_original: 100,
-    preco_promocional: 80,
-  },
-  {
-    id: "epilacao-laser",
-    name: "Epilação a Laser",
-    preco_original: 400,
-    preco_promocional: 320,
-  },
-  {
-    id: "botox",
-    name: "Botox",
-    preco_original: 500,
-    preco_promocional: 400,
-  },
-  {
-    id: "peelings",
-    name: "Peelings",
-    preco_original: 250,
-    preco_promocional: 200,
-  },
-  {
-    id: "remocao-tatuagens",
-    name: "Remoção de Tatuagens",
-    preco_original: 350,
-    preco_promocional: 280,
-  },
-  {
-    id: "despigmentacao-sobrancelhas",
-    name: "Despigmentação de Sobrancelhas",
-    preco_original: 300,
-    preco_promocional: 240,
-  },
-  {
-    id: "lipo-enzimatica",
-    name: "Lipo Enzimática",
-    preco_original: 450,
-    preco_promocional: 360,
-  },
-  {
-    id: "hidrolipoclasia",
-    name: "Hidrolipoclasia",
-    preco_original: 500,
-    preco_promocional: 400,
-  },
-]
+interface Service {
+  id: string
+  name: string
+  preco_original: number
+  preco_promocional: number
+}
 
 export default function HomePage() {
   const [date, setDate] = useState<Date | undefined>(new Date())
-  const [selectedService, setSelectedService] = useState<string>("massagens")
-  
+  const [services, setServices] = useState<Service[]>([])
+  const [selectedService, setSelectedService] = useState<string>("")
+  const [availableDates, setAvailableDates] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const servicesSnapshot = await getDocs(collection(db, "servicos"))
+        const servicesData: Service[] = []
+        servicesSnapshot.forEach((doc) => {
+          const data = doc.data()
+          servicesData.push({
+            id: doc.id,
+            name: data.name || "",
+            preco_original: data.preco_original || 0,
+            preco_promocional: data.preco_promocional || 0,
+          })
+        })
+        setServices(servicesData)
+        if (servicesData.length > 0) {
+          setSelectedService(servicesData[0].id)
+        }
+      } catch (error) {
+        console.error("Error loading services:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadServices()
+  }, [])
+
+  useEffect(() => {
+    const loadAvailability = async () => {
+      try {
+        // Carregar próximos 60 dias de agendamentos
+        const today = new Date()
+        const datesWithSlots = new Set<string>()
+        
+        // Verificar agendamentos confirmados/pendentes para os próximos 60 dias
+        for (let i = 0; i < 60; i++) {
+          const checkDate = new Date(today)
+          checkDate.setDate(today.getDate() + i)
+          if (checkDate.getDay() !== 0) { // Não incluir domingos
+            const formattedDate = checkDate.toLocaleDateString("pt-BR")
+            const appointmentsQuery = query(
+              collection(db, "agendamentos"),
+              where("data", "==", formattedDate),
+              where("status", "in", ["pendente", "confirmado"])
+            )
+            const appointmentsSnapshot = await getDocs(appointmentsQuery)
+            // Se houver menos de 11 agendamentos (todos os horários), a data está disponível
+            if (appointmentsSnapshot.size < 11) {
+              datesWithSlots.add(formattedDate)
+            }
+          }
+        }
+        setAvailableDates(datesWithSlots)
+      } catch (error) {
+        console.error("Error loading availability:", error)
+      }
+    }
+
+    loadAvailability()
+  }, [])
+
   const currentService = services.find(s => s.id === selectedService) || services[0]
+
+  const isDateAvailable = (date: Date) => {
+    const formattedDate = date.toLocaleDateString("pt-BR")
+    return availableDates.has(formattedDate)
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50">
-
       {/* Hero Section with background image and floating widgets */}
       <section className="relative h-[600px] overflow-hidden">
         {/* Background Image */}
@@ -178,7 +175,7 @@ export default function HomePage() {
               {/* Service Header with Images */}
               <div className="p-4 border-b">
                 <div className="flex items-center justify-between mb-3">
-                  <Select value={selectedService} onValueChange={setSelectedService}>
+                  <Select value={selectedService} onValueChange={setSelectedService} disabled={loading}>
                     <SelectTrigger className="w-full max-w-[280px] border-gray-300">
                       <SelectValue placeholder="Selecione um serviço" />
                     </SelectTrigger>
@@ -192,58 +189,63 @@ export default function HomePage() {
                   </Select>
                 </div>
 
-                {/* Before/During/After Images */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                    <Image
-                      src="https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?w=200&h=200&fit=crop"
-                      alt="Antes"
-                      width={100}
-                      height={100}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                  <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                    <Image
-                      src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=200&h=200&fit=crop"
-                      alt="Durante"
-                      width={100}
-                      height={100}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                  <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                    <Image
-                      src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=200&h=200&fit=crop"
-                      alt="Depois"
-                      width={100}
-                      height={100}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                </div>
+                {currentService && (
+                  <>
+                    {/* Before/During/After Images */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                        <Image
+                          src="https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?w=200&h=200&fit=crop"
+                          alt="Antes"
+                          width={100}
+                          height={100}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                      <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                        <Image
+                          src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=200&h=200&fit=crop"
+                          alt="Durante"
+                          width={100}
+                          height={100}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                      <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                        <Image
+                          src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=200&h=200&fit=crop"
+                          alt="Depois"
+                          width={100}
+                          height={100}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                    </div>
 
-                {/* Pricing */}
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">Valor Original:</div>
-                    <div className="text-3xl font-bold text-salmon-500">R$ {currentService.preco_promocional}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-400 line-through mb-1">R$ {currentService.preco_original}</div>
-                    <div className="text-sm text-gray-600">Valor Promocional:</div>
-                    <div className="text-sm font-semibold text-gray-600">R$ {currentService.preco_promocional}</div>
-                  </div>
-                </div>
+                    {/* Pricing */}
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Valor Promocional:</div>
+                        <div className="text-3xl font-bold text-salmon-500">R$ {currentService.preco_promocional}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-400 line-through mb-1">R$ {currentService.preco_original}</div>
+                        <div className="text-sm text-gray-600">Valor Original</div>
+                      </div>
+                    </div>
 
-                <div className="text-xs text-gray-500 mt-2">Valor Promocional: R$ {currentService.preco_promocional}</div>
-
-                <Button className="w-full mt-3 bg-salmon-500 hover:bg-salmon-600 text-white rounded-lg">Agendar</Button>
+                    <Link href="/agendamento">
+                      <Button className="w-full mt-3 bg-salmon-500 hover:bg-salmon-600 text-white rounded-lg">
+                        Agendar Agora
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
 
               {/* Calendar Icon Row */}
               <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
-                <span className="text-xs text-gray-500">Disponível</span>
+                <span className="text-xs text-gray-500">Dias Disponíveis</span>
                 <div className="flex gap-2">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div
@@ -262,6 +264,7 @@ export default function HomePage() {
                   mode="single"
                   selected={date}
                   onSelect={setDate}
+                  disabled={(date) => date < new Date() || date.getDay() === 0 || !isDateAvailable(date)}
                   className="rounded-md"
                   classNames={{
                     months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
@@ -287,6 +290,13 @@ export default function HomePage() {
                     day_hidden: "invisible",
                   }}
                 />
+                {date && (
+                  <Link href="/agendamento">
+                    <Button className="w-full mt-4 bg-salmon-500 hover:bg-salmon-600 text-white">
+                      Agendar para {date.toLocaleDateString("pt-BR")}
+                    </Button>
+                  </Link>
+                )}
               </div>
             </Card>
           </DialogContent>
@@ -338,9 +348,11 @@ export default function HomePage() {
                   Aprenda as melhores técnicas e conquiste seus clientes.
                 </p>
                 <p className="text-xs text-white/80 mb-6">#AreaDoAlunos</p>
-                <Button variant="secondary" className="bg-white text-salmon-500 hover:bg-salmon-50 rounded-full">
-                  Inscreva-se
-                </Button>
+                <Link href="/cursos">
+                  <Button variant="secondary" className="bg-white text-salmon-500 hover:bg-salmon-50 rounded-full">
+                    Inscreva-se
+                  </Button>
+                </Link>
               </div>
             </Card>
 
@@ -357,7 +369,9 @@ export default function HomePage() {
                 <div className="text-3xl font-bold text-salmon-500">R$ 3.350</div>
                 <p className="text-xs text-gray-400 mt-1">Economize 20%</p>
               </div>
-              <Button className="w-full mt-6 bg-salmon-500 hover:bg-salmon-600 text-white">Escolher</Button>
+              <Link href="/combos">
+                <Button className="w-full mt-6 bg-salmon-500 hover:bg-salmon-600 text-white">Escolher</Button>
+              </Link>
             </Card>
 
             {/* Combo 3 */}
@@ -376,7 +390,9 @@ export default function HomePage() {
                 <div className="text-3xl font-bold text-salmon-500">R$ 4.250</div>
                 <p className="text-xs text-gray-400 mt-1">Economize 25%</p>
               </div>
-              <Button className="w-full mt-6 bg-salmon-500 hover:bg-salmon-600 text-white">Escolher</Button>
+              <Link href="/combos">
+                <Button className="w-full mt-6 bg-salmon-500 hover:bg-salmon-600 text-white">Escolher</Button>
+              </Link>
             </Card>
           </div>
         </div>

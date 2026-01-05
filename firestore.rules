@@ -7,6 +7,11 @@ service cloud.firestore {
       allow read, update, delete: if request.auth != null; // Apenas autenticados podem ler/atualizar/deletar
     }
     
+    // Regras para agendamentos fixos - apenas autenticados podem ler e escrever
+    match /agendamentos-fixos/{recurringId} {
+      allow read, write: if request.auth != null; // Apenas autenticados podem acessar
+    }
+    
     // Regras para serviços - apenas autenticados podem ler e escrever
     match /servicos/{servicoId} {
       allow read: if request.auth != null || request.auth == null; // Permite leitura pública

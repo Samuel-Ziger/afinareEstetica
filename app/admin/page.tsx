@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut, CheckCircle2, XCircle, Edit, Trash2, Plus, Upload } from "lucide-react"
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc } from "firebase/firestore"
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc, Timestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { auth, db, storage } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -81,6 +81,22 @@ interface Config {
   }
 }
 
+interface RecurringAppointment {
+  id: string
+  clienteNome: string
+  clienteEmail: string
+  clientePhone: string
+  servicoId: string
+  servicoNome: string
+  servicoPreco: number
+  hora: string
+  tipo: "semanal" | "mensal"
+  diaSemana?: number // 0-6 (domingo-sábado) para semanal
+  diaMes?: number // 1-31 para mensal
+  ativo: boolean
+  createdAt: any
+}
+
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -102,11 +118,16 @@ export default function AdminDashboard() {
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [editingCombo, setEditingCombo] = useState<Combo | null>(null)
   const [editingCourse, setEditingCourse] = useState<Course | null>(null)
+  const [editingRecurring, setEditingRecurring] = useState<RecurringAppointment | null>(null)
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false)
   const [isServiceDetailsDialogOpen, setIsServiceDetailsDialogOpen] = useState(false)
   const [isComboDialogOpen, setIsComboDialogOpen] = useState(false)
   const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false)
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false)
+  const [isRecurringDialogOpen, setIsRecurringDialogOpen] = useState(false)
+  const [isCalendarViewOpen, setIsCalendarViewOpen] = useState(false)
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(new Date())
+  const [recurringAppointments, setRecurringAppointments] = useState<RecurringAppointment[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
@@ -135,6 +156,25 @@ export default function AdminDashboard() {
         appointmentsData.push({ id: doc.id, ...doc.data() } as Appointment)
       })
       setAppointments(appointmentsData)
+    })
+
+    // Load recurring appointments
+    const loadRecurringAppointments = async () => {
+      const recurringSnapshot = await getDocs(collection(db, "agendamentos-fixos"))
+      const recurringData: RecurringAppointment[] = []
+      recurringSnapshot.forEach((doc) => {
+        recurringData.push({ id: doc.id, ...doc.data() } as RecurringAppointment)
+      })
+      setRecurringAppointments(recurringData)
+    }
+    loadRecurringAppointments()
+
+    const unsubscribeRecurring = onSnapshot(collection(db, "agendamentos-fixos"), (snapshot) => {
+      const recurringData: RecurringAppointment[] = []
+      snapshot.forEach((doc) => {
+        recurringData.push({ id: doc.id, ...doc.data() } as RecurringAppointment)
+      })
+      setRecurringAppointments(recurringData)
     })
 
     // Load services
@@ -423,6 +463,7 @@ export default function AdminDashboard() {
       unsubscribeServices()
       unsubscribeCombos()
       unsubscribeCourses()
+      unsubscribeRecurring()
     }
   }, [user])
 
@@ -1115,6 +1156,81 @@ export default function AdminDashboard() {
     }
   }
 
+  const generateAppointmentsFromRecurring = async (recurringList: RecurringAppointment[]) => {
+    try {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const endDate = new Date()
+      endDate.setDate(today.getDate() + 60) // Próximos 60 dias
+
+      for (const recurring of recurringList) {
+        if (!recurring.ativo) continue
+
+        const dates: Date[] = []
+
+        if (recurring.tipo === "semanal" && recurring.diaSemana !== undefined) {
+          // Gerar datas semanais
+          const currentDate = new Date(today)
+          while (currentDate <= endDate) {
+            if (currentDate.getDay() === recurring.diaSemana) {
+              dates.push(new Date(currentDate))
+            }
+            currentDate.setDate(currentDate.getDate() + 1)
+          }
+        } else if (recurring.tipo === "mensal" && recurring.diaMes !== undefined) {
+          // Gerar datas mensais
+          const currentDate = new Date(today)
+          while (currentDate <= endDate) {
+            if (currentDate.getDate() === recurring.diaMes) {
+              dates.push(new Date(currentDate))
+            }
+            currentDate.setDate(currentDate.getDate() + 1)
+          }
+        }
+
+        // Verificar e criar agendamentos que não existem
+        for (const date of dates) {
+          const formattedDate = date.toLocaleDateString("pt-BR")
+          const existingQuery = query(
+            collection(db, "agendamentos"),
+            where("data", "==", formattedDate),
+            where("hora", "==", recurring.hora),
+            where("clientePhone", "==", recurring.clientePhone)
+          )
+          const existingSnapshot = await getDocs(existingQuery)
+
+          if (existingSnapshot.empty) {
+            // Criar agendamento
+            await addDoc(collection(db, "agendamentos"), {
+              clienteNome: recurring.clienteNome,
+              clienteEmail: recurring.clienteEmail,
+              clientePhone: recurring.clientePhone,
+              servicoId: recurring.servicoId,
+              servicoNome: recurring.servicoNome,
+              servicoPreco: recurring.servicoPreco,
+              data: formattedDate,
+              hora: recurring.hora,
+              status: "confirmado",
+              isRecurring: true,
+              recurringId: recurring.id,
+              createdAt: Timestamp.now(),
+            })
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error generating appointments from recurring:", error)
+    }
+  }
+
+  const generateRecurringAppointments = async () => {
+    await generateAppointmentsFromRecurring(recurringAppointments)
+    toast({
+      title: "Sucesso",
+      description: "Agendamentos fixos gerados com sucesso",
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -1166,6 +1282,16 @@ export default function AdminDashboard() {
           >
             <CalendarIcon className="h-5 w-5" />
             <span>Agendamentos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("calendario")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeTab === "calendario" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <CalendarIcon className="h-5 w-5" />
+            <span>Calendário</span>
           </button>
 
           <button
@@ -1387,6 +1513,208 @@ export default function AdminDashboard() {
                 )}
               </div>
             </Card>
+          )}
+
+          {activeTab === "calendario" && (
+            <div className="space-y-6">
+              <Card className="bg-white p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Calendário de Agendamentos</h3>
+                  <Button
+                    onClick={() => {
+                      setEditingRecurring({
+                        id: "",
+                        clienteNome: "",
+                        clienteEmail: "",
+                        clientePhone: "",
+                        servicoId: "",
+                        servicoNome: "",
+                        servicoPreco: 0,
+                        hora: "",
+                        tipo: "semanal",
+                        diaSemana: 1,
+                        ativo: true,
+                        createdAt: Timestamp.now(),
+                      })
+                      setIsRecurringDialogOpen(true)
+                    }}
+                    className="bg-salmon-500 hover:bg-salmon-600 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Novo Agendamento Fixo
+                  </Button>
+                </div>
+
+                <div className="grid lg:grid-cols-2 gap-6">
+                  {/* Calendar */}
+                  <div>
+                    <Calendar
+                      mode="single"
+                      selected={selectedCalendarDate}
+                      onSelect={(date) => {
+                        setSelectedCalendarDate(date)
+                        setIsCalendarViewOpen(true)
+                      }}
+                      className="rounded-md border"
+                    />
+                  </div>
+
+                  {/* Day Appointments */}
+                  <div>
+                    {selectedCalendarDate && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-4">
+                          Agendamentos de {selectedCalendarDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                        </h4>
+                        {(() => {
+                          const formattedDate = selectedCalendarDate.toLocaleDateString("pt-BR")
+                          const dayAppointments = appointments.filter((app) => app.data === formattedDate)
+                          return (
+                            <div className="space-y-3">
+                              {dayAppointments.length > 0 ? (
+                                dayAppointments.map((app) => (
+                                  <Card key={app.id} className="p-4">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="font-semibold text-gray-900">{app.clienteNome}</div>
+                                        <div className="text-sm text-gray-600 mt-1">{app.servicoNome}</div>
+                                        <div className="text-sm text-gray-500 mt-1">
+                                          {app.hora} - R$ {app.servicoPreco}
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-1">
+                                          {app.clienteEmail} | {app.clientePhone}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-2">
+                                        <span
+                                          className={`text-xs px-2 py-1 rounded ${
+                                            app.status === "concluido"
+                                              ? "bg-green-100 text-green-700"
+                                              : app.status === "cancelado"
+                                              ? "bg-red-100 text-red-700"
+                                              : app.status === "confirmado"
+                                              ? "bg-blue-100 text-blue-700"
+                                              : "bg-yellow-100 text-yellow-700"
+                                          }`}
+                                        >
+                                          {app.status === "concluido"
+                                            ? "Concluído"
+                                            : app.status === "cancelado"
+                                            ? "Cancelado"
+                                            : app.status === "confirmado"
+                                            ? "Confirmado"
+                                            : "Pendente"}
+                                        </span>
+                                        {app.status !== "concluido" && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-green-600 border-green-600 hover:bg-green-50"
+                                            onClick={() => updateAppointmentStatus(app.id, "concluido")}
+                                          >
+                                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                                            Concluir
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </Card>
+                                ))
+                              ) : (
+                                <p className="text-sm text-gray-500 text-center py-8">Nenhum agendamento neste dia</p>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {/* Recurring Appointments */}
+              <Card className="bg-white p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Agendamentos Fixos</h3>
+                  <Button
+                    onClick={generateRecurringAppointments}
+                    variant="outline"
+                    className="border-green-500 text-green-600 hover:bg-green-50"
+                  >
+                    Gerar Agendamentos
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  {recurringAppointments.length > 0 ? (
+                    recurringAppointments.map((recurring) => (
+                      <div key={recurring.id} className="border rounded-lg p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900">{recurring.clienteNome}</h4>
+                            <p className="text-sm text-gray-600 mt-1">{recurring.servicoNome}</p>
+                            <div className="mt-2 flex gap-4 text-sm">
+                              <span className="text-gray-600">
+                                {recurring.tipo === "semanal"
+                                  ? `Toda ${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][recurring.diaSemana || 0]}`
+                                  : `Dia ${recurring.diaMes} de cada mês`}
+                              </span>
+                              <span className="text-gray-600">às {recurring.hora}</span>
+                              <span className={recurring.ativo ? "text-green-600" : "text-gray-400"}>
+                                {recurring.ativo ? "Ativo" : "Inativo"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {recurring.clienteEmail} | {recurring.clientePhone}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingRecurring(recurring)
+                                setIsRecurringDialogOpen(true)
+                              }}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 border-red-600 hover:bg-red-50"
+                              onClick={async () => {
+                                if (confirm("Tem certeza que deseja excluir este agendamento fixo?")) {
+                                  try {
+                                    await deleteDoc(doc(db, "agendamentos-fixos", recurring.id))
+                                    toast({
+                                      title: "Sucesso",
+                                      description: "Agendamento fixo excluído",
+                                    })
+                                  } catch (error) {
+                                    console.error("Error deleting recurring:", error)
+                                    toast({
+                                      title: "Erro",
+                                      description: "Não foi possível excluir",
+                                      variant: "destructive",
+                                    })
+                                  }
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Excluir
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-500 py-8">Nenhum agendamento fixo cadastrado</p>
+                  )}
+                </div>
+              </Card>
+            </div>
           )}
 
           {activeTab === "servicos" && (
@@ -2158,6 +2486,168 @@ export default function AdminDashboard() {
                   Cancelar
                 </Button>
                 <Button onClick={() => saveCourse(editingCourse)} className="bg-salmon-500 hover:bg-salmon-600">
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Recurring Appointment Dialog */}
+      <Dialog open={isRecurringDialogOpen} onOpenChange={setIsRecurringDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingRecurring?.id ? "Editar Agendamento Fixo" : "Novo Agendamento Fixo"}</DialogTitle>
+          </DialogHeader>
+          {editingRecurring && (
+            <div className="space-y-4">
+              <div>
+                <Label>Nome do Cliente</Label>
+                <Input
+                  value={editingRecurring.clienteNome}
+                  onChange={(e) => setEditingRecurring({ ...editingRecurring, clienteNome: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>E-mail</Label>
+                  <Input
+                    type="email"
+                    value={editingRecurring.clienteEmail}
+                    onChange={(e) => setEditingRecurring({ ...editingRecurring, clienteEmail: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input
+                    value={editingRecurring.clientePhone}
+                    onChange={(e) => setEditingRecurring({ ...editingRecurring, clientePhone: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Serviço</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                  value={editingRecurring.servicoId}
+                  onChange={(e) => {
+                    const service = services.find((s) => s.id === e.target.value)
+                    setEditingRecurring({
+                      ...editingRecurring,
+                      servicoId: e.target.value,
+                      servicoNome: service?.name || "",
+                      servicoPreco: service?.preco_promocional || 0,
+                    })
+                  }}
+                >
+                  <option value="">Selecione um serviço</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} - R$ {service.preco_promocional}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Horário</Label>
+                  <Input
+                    type="time"
+                    value={editingRecurring.hora}
+                    onChange={(e) => setEditingRecurring({ ...editingRecurring, hora: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Tipo</Label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                    value={editingRecurring.tipo}
+                    onChange={(e) =>
+                      setEditingRecurring({
+                        ...editingRecurring,
+                        tipo: e.target.value as "semanal" | "mensal",
+                      })
+                    }
+                  >
+                    <option value="semanal">Semanal</option>
+                    <option value="mensal">Mensal</option>
+                  </select>
+                </div>
+              </div>
+              {editingRecurring.tipo === "semanal" && (
+                <div>
+                  <Label>Dia da Semana</Label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                    value={editingRecurring.diaSemana}
+                    onChange={(e) =>
+                      setEditingRecurring({ ...editingRecurring, diaSemana: parseInt(e.target.value) })
+                    }
+                  >
+                    <option value="1">Segunda-feira</option>
+                    <option value="2">Terça-feira</option>
+                    <option value="3">Quarta-feira</option>
+                    <option value="4">Quinta-feira</option>
+                    <option value="5">Sexta-feira</option>
+                    <option value="6">Sábado</option>
+                  </select>
+                </div>
+              )}
+              {editingRecurring.tipo === "mensal" && (
+                <div>
+                  <Label>Dia do Mês (1-31)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={editingRecurring.diaMes}
+                    onChange={(e) =>
+                      setEditingRecurring({ ...editingRecurring, diaMes: parseInt(e.target.value) })
+                    }
+                  />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="ativo"
+                  checked={editingRecurring.ativo}
+                  onChange={(e) => setEditingRecurring({ ...editingRecurring, ativo: e.target.checked })}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="ativo">Agendamento Ativo</Label>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsRecurringDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      if (editingRecurring.id && recurringAppointments.find((r) => r.id === editingRecurring.id)) {
+                        await setDoc(doc(db, "agendamentos-fixos", editingRecurring.id), editingRecurring)
+                      } else {
+                        const newId = `${editingRecurring.clienteNome.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`
+                        await setDoc(doc(db, "agendamentos-fixos", newId), { ...editingRecurring, id: newId })
+                      }
+                      toast({
+                        title: "Sucesso",
+                        description: "Agendamento fixo salvo com sucesso",
+                      })
+                      setIsRecurringDialogOpen(false)
+                      setEditingRecurring(null)
+                    } catch (error) {
+                      console.error("Error saving recurring:", error)
+                      toast({
+                        title: "Erro",
+                        description: "Não foi possível salvar o agendamento fixo",
+                        variant: "destructive",
+                      })
+                    }
+                  }}
+                  className="bg-salmon-500 hover:bg-salmon-600"
+                >
                   Salvar
                 </Button>
               </DialogFooter>
