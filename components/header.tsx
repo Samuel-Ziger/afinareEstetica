@@ -6,7 +6,8 @@ import { useState, useEffect } from "react"
 import { Menu, X, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { onAuthStateChanged } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { doc, getDoc } from "firebase/firestore"
+import { auth, db } from "@/lib/firebase"
 
 export function Header() {
   const pathname = usePathname()
@@ -14,8 +15,21 @@ export function Header() {
   const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAdmin(!!user)
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Verificar se o usuário tem role de admin
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid))
+          const userData = userDoc.data()
+          const role = userData?.role || "cliente"
+          setIsAdmin(role === "admin")
+        } catch (error) {
+          console.error("Erro ao verificar role do usuário:", error)
+          setIsAdmin(false)
+        }
+      } else {
+        setIsAdmin(false)
+      }
     })
     return () => unsubscribe()
   }, [])

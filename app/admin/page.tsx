@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut, CheckCircle2, XCircle, Edit, Trash2, Plus, Upload, Menu } from "lucide-react"
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc, Timestamp } from "firebase/firestore"
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc, Timestamp, getDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { auth, db, storage } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -137,17 +137,43 @@ export default function AdminDashboard() {
   const { toast } = useToast()
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setUser(currentUser)
-        setLoading(false)
+        // Verificar se o usuário tem role de admin
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid))
+          const userData = userDoc.data()
+          const role = userData?.role || "cliente"
+          
+          if (role !== "admin") {
+            // Usuário não é admin, redirecionar para página do cliente
+            toast({
+              title: "Acesso negado",
+              description: "Você não tem permissão para acessar esta página.",
+              variant: "destructive",
+            })
+            router.push("/cliente")
+            return
+          }
+          
+          setUser(currentUser)
+          setLoading(false)
+        } catch (error) {
+          console.error("Erro ao verificar role do usuário:", error)
+          toast({
+            title: "Erro",
+            description: "Erro ao verificar permissões. Redirecionando...",
+            variant: "destructive",
+          })
+          router.push("/login")
+        }
       } else {
         router.push("/login")
       }
     })
 
     return () => unsubscribe()
-  }, [router])
+  }, [router, toast])
 
   useEffect(() => {
     if (!user) return
