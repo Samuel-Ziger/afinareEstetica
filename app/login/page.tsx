@@ -9,9 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { auth, db } from "@/lib/firebase"
+import { doc, getDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
+import Link from "next/link"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -35,12 +37,24 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      
+      // Verificar role do usuário
+      const userDoc = await getDoc(doc(db, "users", userCredential.user.uid))
+      const userData = userDoc.data()
+      const role = userData?.role || "cliente" // Default é cliente se não tiver role definida
+      
       toast({
         title: "Login realizado!",
         description: "Redirecionando...",
       })
-      router.push("/admin")
+      
+      // Redirecionar baseado no role
+      if (role === "admin") {
+        router.push("/admin")
+      } else {
+        router.push("/cliente")
+      }
     } catch (error: any) {
       console.error("[v0] Login error:", error)
 
@@ -75,7 +89,7 @@ export default function LoginPage() {
         <Card className="shadow-lg">
           <CardHeader className="text-center">
             <CardTitle>Entrar</CardTitle>
-            <CardDescription>Acesse o painel administrativo</CardDescription>
+            <CardDescription>Acesse sua conta</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
@@ -108,7 +122,7 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-muted-foreground">
+            <div className="mt-6 text-center text-sm text-muted-foreground space-y-2">
               <p>Esqueceu sua senha?</p>
               <a
                 href="https://wa.me/5561986543099?text=Esqueci minha senha do painel administrativo"
@@ -118,6 +132,12 @@ export default function LoginPage() {
               >
                 Entre em contato
               </a>
+              <p className="pt-2">
+                Não tem uma conta?{" "}
+                <Link href="/registro" className="text-salmon-600 hover:underline">
+                  Criar conta
+                </Link>
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Calendar } from "@/components/ui/calendar"
 import { CalendarIcon, Clock, X } from "lucide-react"
 import { collection, addDoc, getDocs, query, where, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { db, auth } from "@/lib/firebase"
+import { onAuthStateChanged } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -32,9 +33,22 @@ export default function AgendamentoPage() {
   const [loading, setLoading] = useState(false)
   const [loadingServices, setLoadingServices] = useState(true)
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set())
+  const [slotCounts, setSlotCounts] = useState<Map<string, number>>(new Map())
   const [loadingAvailability, setLoadingAvailability] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   const { toast } = useToast()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
+      if (user) {
+        // Preencher dados do cliente se estiver logado
+        setClientEmail(user.email || "")
+      }
+    })
+    return () => unsubscribe()
+  }, [])
 
   useEffect(() => {
     const loadServices = async () => {
@@ -82,12 +96,22 @@ export default function AgendamentoPage() {
         )
         const appointmentsSnapshot = await getDocs(appointmentsQuery)
         const booked = new Set<string>()
+        const counts = new Map<string, number>()
+        
         appointmentsSnapshot.forEach((doc) => {
           const data = doc.data()
           if (data.hora) {
-            booked.add(data.hora)
+            const currentCount = counts.get(data.hora) || 0
+            counts.set(data.hora, currentCount + 1)
+            
+            // Se já tem 2 ou mais agendamentos, marca como indisponível
+            if (currentCount + 1 >= 2) {
+              booked.add(data.hora)
+            }
           }
         })
+        
+        setSlotCounts(counts)
         setBookedSlots(booked)
       } catch (error) {
         console.error("Error loading availability:", error)
@@ -109,11 +133,12 @@ export default function AgendamentoPage() {
       return
     }
 
-    // Verificar se o horário ainda está disponível
-    if (bookedSlots.has(selectedTime)) {
+    // Verificar se o horário ainda está disponível (máximo 2 pessoas por horário)
+    const currentCount = slotCounts.get(selectedTime) || 0
+    if (currentCount >= 2) {
       toast({
         title: "Horário indisponível",
-        description: "Este horário foi ocupado. Por favor, escolha outro.",
+        description: "Este horário já está completo (máximo 2 pessoas por horário). Por favor, escolha outro.",
         variant: "destructive",
       })
       return
@@ -126,7 +151,7 @@ export default function AgendamentoPage() {
       const formattedDate = selectedDate.toLocaleDateString("pt-BR")
 
       // Save to Firestore
-      await addDoc(collection(db, "agendamentos"), {
+      const appointmentData: any = {
         clienteNome: clientName,
         clienteEmail: clientEmail,
         clientePhone: clientPhone,
@@ -137,7 +162,14 @@ export default function AgendamentoPage() {
         hora: selectedTime,
         status: "pendente",
         createdAt: Timestamp.now(),
-      })
+      }
+
+      // Adicionar clienteId se o usuário estiver logado
+      if (currentUser) {
+        appointmentData.clienteId = currentUser.uid
+      }
+
+      await addDoc(collection(db, "agendamentos"), appointmentData)
 
       // Open WhatsApp
       const message = `Novo agendamento:\n\nNome: ${clientName}\nServiço: ${service?.name}\nData: ${formattedDate}\nHorário: ${selectedTime}\nTelefone: ${clientPhone}\nE-mail: ${clientEmail}`
@@ -338,13 +370,13 @@ export default function AgendamentoPage() {
                       </div>
                       {bookedSlots.size > 0 && (
                         <p className="text-xs text-muted-foreground mt-2">
-                          {bookedSlots.size} horário(s) já ocupado(s) neste dia
+                          {bookedSlots.size} horário(s) já completo(s) (máximo 2 pessoas por horário)
                         </p>
                       )}
                     </div>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-col gap-3">
                     <Button onClick={() => setStep(1)} variant="outline" className="w-full">
                       Voltar
                     </Button>
@@ -416,7 +448,7 @@ export default function AgendamentoPage() {
                     </CardContent>
                   </Card>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-col gap-3">
                     <Button onClick={() => setStep(2)} variant="outline" className="w-full">
                       Voltar
                     </Button>

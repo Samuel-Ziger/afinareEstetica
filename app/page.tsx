@@ -60,6 +60,7 @@ export default function HomePage() {
         // Carregar próximos 60 dias de agendamentos
         const today = new Date()
         const datesWithSlots = new Set<string>()
+        const timeSlots = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"]
         
         // Verificar agendamentos confirmados/pendentes para os próximos 60 dias
         for (let i = 0; i < 60; i++) {
@@ -73,8 +74,24 @@ export default function HomePage() {
               where("status", "in", ["pendente", "confirmado"])
             )
             const appointmentsSnapshot = await getDocs(appointmentsQuery)
-            // Se houver menos de 11 agendamentos (todos os horários), a data está disponível
-            if (appointmentsSnapshot.size < 11) {
+            
+            // Contar agendamentos por horário
+            const slotCounts = new Map<string, number>()
+            appointmentsSnapshot.forEach((doc) => {
+              const data = doc.data()
+              if (data.hora) {
+                const currentCount = slotCounts.get(data.hora) || 0
+                slotCounts.set(data.hora, currentCount + 1)
+              }
+            })
+            
+            // Verificar se há pelo menos um horário disponível (menos de 2 agendamentos)
+            const hasAvailableSlot = timeSlots.some((time) => {
+              const count = slotCounts.get(time) || 0
+              return count < 2
+            })
+            
+            if (hasAvailableSlot) {
               datesWithSlots.add(formattedDate)
             }
           }

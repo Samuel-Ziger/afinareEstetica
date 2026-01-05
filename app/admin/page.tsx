@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut, CheckCircle2, XCircle, Edit, Trash2, Plus, Upload } from "lucide-react"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Settings, CalendarIcon, Users, Package, GraduationCap, Home, LogOut, CheckCircle2, XCircle, Edit, Trash2, Plus, Upload, Menu } from "lucide-react"
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, setDoc, Timestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { auth, db, storage } from "@/lib/firebase"
@@ -17,6 +18,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import Image from "next/image"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface Appointment {
   id: string
@@ -129,6 +131,8 @@ export default function AdminDashboard() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(new Date())
   const [recurringAppointments, setRecurringAppointments] = useState<RecurringAppointment[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const isMobile = useIsMobile()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -476,13 +480,13 @@ export default function AdminDashboard() {
     }
   }
 
-  const updateAppointmentStatus = async (appointmentId: string, status: "concluido" | "cancelado") => {
+  const updateAppointmentStatus = async (appointmentId: string, status: "concluido" | "cancelado" | "pendente" | "confirmado") => {
     try {
       const appointmentRef = doc(db, "agendamentos", appointmentId)
       await updateDoc(appointmentRef, { status })
       toast({
         title: "Sucesso",
-        description: `Agendamento marcado como ${status === "concluido" ? "concluído" : "cancelado"}`,
+        description: `Agendamento ${status === "concluido" ? "marcado como concluído" : status === "cancelado" ? "desmarcado/cancelado" : status === "confirmado" ? "confirmado" : "marcado como pendente"}`,
       })
     } catch (error) {
       console.error("Error updating appointment:", error)
@@ -1255,101 +1259,136 @@ export default function AdminDashboard() {
 
   const proximosAgendamentos = appointments.filter((a) => a.status === "confirmado").slice(0, 2)
 
+  // Função para navegar e fechar o menu mobile
+  const handleNavigate = (tab: string) => {
+    setActiveTab(tab)
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  // Componente do menu de navegação (reutilizável)
+  const NavigationMenu = () => (
+    <>
+      <div className="p-6">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h1>
+      </div>
+
+      <nav className="flex-1 px-4 space-y-1">
+        <button
+          onClick={() => handleNavigate("inicio")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "inicio" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <Home className="h-5 w-5" />
+          <span>Início</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("agendamentos-list")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "agendamentos-list" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <CalendarIcon className="h-5 w-5" />
+          <span>Agendamentos</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("calendario")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "calendario" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <CalendarIcon className="h-5 w-5" />
+          <span>Calendário</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("servicos")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "servicos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <Package className="h-5 w-5" />
+          <span>Serviços</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("combos")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "combos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <Package className="h-5 w-5" />
+          <span>Combos</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("cursos")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "cursos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <GraduationCap className="h-5 w-5" />
+          <span>Cursos</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate("configuracoes")}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+            activeTab === "configuracoes" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          <Settings className="h-5 w-5" />
+          <span>Configurações</span>
+        </button>
+      </nav>
+
+      <div className="p-4 border-t">
+        <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
+          <LogOut className="h-5 w-5 mr-2" />
+          Sair
+        </Button>
+      </div>
+    </>
+  )
+
   return (
     <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h1>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-1">
-          <button
-            onClick={() => setActiveTab("inicio")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "inicio" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Home className="h-5 w-5" />
-            <span>Início</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("agendamentos-list")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "agendamentos-list" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <CalendarIcon className="h-5 w-5" />
-            <span>Agendamentos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("calendario")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "calendario" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <CalendarIcon className="h-5 w-5" />
-            <span>Calendário</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("servicos")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "servicos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Package className="h-5 w-5" />
-            <span>Serviços</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("combos")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "combos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Package className="h-5 w-5" />
-            <span>Combos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("cursos")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "cursos" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <GraduationCap className="h-5 w-5" />
-            <span>Cursos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("configuracoes")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeTab === "configuracoes" ? "bg-salmon-500 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Settings className="h-5 w-5" />
-            <span>Configurações</span>
-          </button>
-        </nav>
-
-        <div className="p-4 border-t">
-          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
-            <LogOut className="h-5 w-5 mr-2" />
-            Sair
-          </Button>
-        </div>
+      {/* Sidebar Desktop */}
+      <aside className={`hidden md:flex w-64 bg-white border-r flex-col`}>
+        <NavigationMenu />
       </aside>
+
+      {/* Sidebar Mobile - Sheet */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-64 p-0">
+          <div className="flex flex-col h-full bg-white">
+            <NavigationMenu />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         {/* Header */}
-        <header className="bg-white border-b px-8 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h2>
+        <header className="bg-white border-b px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <span className="text-gray-600">Afinare Estética</span>
+            {/* Botão Menu Mobile */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="md:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard Administrativo</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="hidden md:inline text-gray-600">Afinare Estética</span>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-5 w-5" />
             </Button>
@@ -1479,19 +1518,40 @@ export default function AdminDashboard() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex gap-2">
-                            {app.status !== "concluido" && (
+                          <div className="flex flex-wrap gap-2">
+                            {app.status !== "concluido" && app.status !== "cancelado" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                  onClick={() => updateAppointmentStatus(app.id, "concluido")}
+                                >
+                                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                                  Concluir
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-600 hover:bg-red-50"
+                                  onClick={() => updateAppointmentStatus(app.id, "cancelado")}
+                                >
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  Desmarcar
+                                </Button>
+                              </>
+                            )}
+                            {app.status === "cancelado" && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-green-600 border-green-600 hover:bg-green-50"
-                                onClick={() => updateAppointmentStatus(app.id, "concluido")}
+                                className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                                onClick={() => updateAppointmentStatus(app.id, "pendente")}
                               >
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                                Concluir
+                                Reativar
                               </Button>
                             )}
-                            {app.status !== "cancelado" && (
+                            {app.status === "concluido" && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1499,7 +1559,7 @@ export default function AdminDashboard() {
                                 onClick={() => updateAppointmentStatus(app.id, "cancelado")}
                               >
                                 <XCircle className="h-4 w-4 mr-1" />
-                                Cancelar
+                                Desmarcar
                               </Button>
                             )}
                           </div>
@@ -1605,17 +1665,51 @@ export default function AdminDashboard() {
                                             ? "Confirmado"
                                             : "Pendente"}
                                         </span>
-                                        {app.status !== "concluido" && (
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-green-600 border-green-600 hover:bg-green-50"
-                                            onClick={() => updateAppointmentStatus(app.id, "concluido")}
-                                          >
-                                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                                            Concluir
-                                          </Button>
-                                        )}
+                                        <div className="flex flex-col gap-1">
+                                          {app.status !== "concluido" && app.status !== "cancelado" && (
+                                            <>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-green-600 border-green-600 hover:bg-green-50"
+                                                onClick={() => updateAppointmentStatus(app.id, "concluido")}
+                                              >
+                                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                Concluir
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-red-600 border-red-600 hover:bg-red-50"
+                                                onClick={() => updateAppointmentStatus(app.id, "cancelado")}
+                                              >
+                                                <XCircle className="h-3 w-3 mr-1" />
+                                                Desmarcar
+                                              </Button>
+                                            </>
+                                          )}
+                                          {app.status === "cancelado" && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                                              onClick={() => updateAppointmentStatus(app.id, "pendente")}
+                                            >
+                                              Reativar
+                                            </Button>
+                                          )}
+                                          {app.status === "concluido" && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-red-600 border-red-600 hover:bg-red-50"
+                                              onClick={() => updateAppointmentStatus(app.id, "cancelado")}
+                                            >
+                                              <XCircle className="h-3 w-3 mr-1" />
+                                              Desmarcar
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </Card>
