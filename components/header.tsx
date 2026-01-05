@@ -1,27 +1,25 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
-import { Menu, X, Bell, Lock } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Menu, X, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { onAuthStateChanged } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAdmin(!!user)
+    })
+    return () => unsubscribe()
+  }, [])
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200">
-      {/* Top Bar */}
-      <div className="bg-neutral-100 border-b border-gray-200 py-1">
-        <div className="container px-4 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2 text-gray-600">
-            <Lock className="h-3 w-3" />
-            <span>Afinare Estética</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Bell className="h-3 w-3 text-gray-600" />
-          </div>
-        </div>
-      </div>
 
       {/* Main Header */}
       <div className="container flex h-20 items-center justify-between px-4">
@@ -56,6 +54,14 @@ export function Header() {
           >
             Agendamento
           </Link>
+          {isAdmin && (
+            <Link href="/admin" className="text-sm font-medium text-gray-600 hover:text-salmon-500 transition-colors">
+              <Button size="sm" variant="outline" className="rounded-full px-6">
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                Dashboard
+              </Button>
+            </Link>
+          )}
           <Link href="/login">
             <Button size="sm" className="bg-salmon-500 hover:bg-salmon-600 text-white rounded-full px-6">
               Login
@@ -108,6 +114,14 @@ export function Header() {
             >
               Agendamento
             </Link>
+            {isAdmin && (
+              <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
+                <Button size="sm" variant="outline" className="w-full">
+                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  Dashboard
+                </Button>
+              </Link>
+            )}
             <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
               <Button size="sm" className="w-full bg-salmon-500 hover:bg-salmon-600 text-white">
                 Login
