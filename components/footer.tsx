@@ -35,6 +35,18 @@ export function Footer() {
           <p className="text-xs text-gray-500">
             Segunda a Sexta: 08h às 19h | Sábado: 08h às 13h
           </p>
+
+          <p className="text-xs text-gray-400 mt-4">
+            Desenvolvido por{" "}
+            <Link
+              href="http://zontech.online/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-salmon-500 transition-colors"
+            >
+              Zona Tech
+            </Link>
+          </p>
         </div>
       </div>
     </footer>

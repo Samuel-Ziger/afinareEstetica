@@ -83,24 +83,36 @@ export default function HomePage() {
         </div>
 
         {/* Floating Widgets - Top Right */}
-        <div className="absolute top-6 right-6 flex gap-3">
+        <div className="absolute top-6 right-24 flex gap-3">
           {/* Localização Button */}
-          <Card className="p-4 bg-salmon-500 text-white border-0 shadow-lg">
-            <div className="flex flex-col items-center gap-1 min-w-[120px]">
-              <MapPin className="h-5 w-5" />
-              <div className="text-xs font-medium text-center">Localização</div>
-            </div>
-          </Card>
+          <Link
+            href="https://www.google.com/maps/search/?api=1&query=CLN+103+bl+b+sala+16+Asa+Norte+Brasilia"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cursor-pointer"
+          >
+            <Card className="p-4 bg-salmon-500 text-white border-0 shadow-lg hover:bg-salmon-600 transition-colors">
+              <div className="flex flex-col items-center gap-1 min-w-[120px]">
+                <MapPin className="h-5 w-5" />
+                <div className="text-xs font-medium text-center">Localização</div>
+              </div>
+            </Card>
+          </Link>
 
           {/* WhatsApp Contact */}
-          <Card className="p-4 bg-white border-0 shadow-lg">
-            <div className="flex flex-col items-center gap-1 min-w-[120px]">
-              <Phone className="h-5 w-5 text-gray-700" />
-              <div className="text-xs font-medium text-gray-700">Contato</div>
-              <div className="text-xs text-gray-500">WhatsApp:</div>
-              <div className="text-xs text-gray-700">(61) 98654-3099</div>
-            </div>
-          </Card>
+          <Link
+            href="https://wa.me/5561986543099"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cursor-pointer"
+          >
+            <Card className="p-4 bg-white border-0 shadow-lg hover:bg-gray-50 transition-colors">
+              <div className="flex flex-col items-center gap-1 min-w-[120px]">
+                <Phone className="h-5 w-5 text-gray-700" />
+                <div className="text-xs font-medium text-center text-gray-700">WhatsApp</div>
+              </div>
+            </Card>
+          </Link>
         </div>
 
         {/* Calendar Button - Fixed Position */}
@@ -238,70 +250,30 @@ export default function HomePage() {
         <div className="container px-4">
           <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Serviços</h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-6 max-w-5xl mx-auto">
+          <div className="flex flex-wrap justify-center gap-4 max-w-4xl mx-auto">
             {/* Service 1 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <Zap className="h-8 w-8 text-salmon-400 stroke-[1.5]" />
-              </div>
-              <div className="text-center text-sm text-gray-700">
-                Remoção a<br />
-                Laser
-              </div>
+            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
+              Remoção a Laser
             </div>
 
             {/* Service 2 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <div className="relative">
-                  <div className="absolute -left-2 top-0 text-salmon-400 text-2xl">×</div>
-                  <div className="absolute -right-2 top-0 text-salmon-400 text-2xl">×</div>
-                </div>
-              </div>
-              <div className="text-center text-sm text-gray-700">
-                Acupuntura
-                <br />+ Massagem
-              </div>
+            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
+              Acupuntura + Massagem
             </div>
 
             {/* Service 3 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <Syringe className="h-8 w-8 text-salmon-400 stroke-[1.5]" />
-              </div>
-              <div className="text-center text-sm text-gray-700">
-                Limpeza
-                <br />
-                Facial
-              </div>
+            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
+              Limpeza Facial
             </div>
 
             {/* Service 4 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <Flower2 className="h-8 w-8 text-salmon-400 stroke-[1.5]" />
-              </div>
-              <div className="text-center text-sm text-gray-700">Botox</div>
+            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
+              Botox
             </div>
 
             {/* Service 5 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <Wind className="h-8 w-8 text-salmon-400 stroke-[1.5]" />
-              </div>
-              <div className="text-center text-sm text-gray-700">
-                Drenagem
-                <br />
-                Botox
-              </div>
-            </div>
-
-            {/* Service 6 */}
-            <div className="flex flex-col items-center gap-3 group cursor-pointer">
-              <div className="w-20 h-20 rounded-2xl border-2 border-gray-200 flex items-center justify-center group-hover:border-salmon-500 transition-colors">
-                <Sparkles className="h-8 w-8 text-salmon-400 stroke-[1.5]" />
-              </div>
-              <div className="text-center text-sm text-gray-700">Outros</div>
+            <div className="px-6 py-3 rounded-full border-2 border-salmon-500 bg-white text-salmon-500 hover:bg-salmon-500 hover:text-white transition-colors cursor-pointer text-center text-sm font-medium">
+              Drenagem Botox
             </div>
           </div>
         </div>
