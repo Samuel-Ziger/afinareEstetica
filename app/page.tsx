@@ -382,14 +382,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="py-8 bg-white border-t">
-        <div className="container px-4 text-center">
-          <p className="text-sm text-gray-600 mb-1">CLN 103 bl b sala 16 Asa Norte</p>
-          <p className="text-xs text-gray-500">Instancia: Seg-Fx: 08h-19h, Sáb : 13h-13h</p>
-        </div>
-      </footer>
     </div>
   )
 }
