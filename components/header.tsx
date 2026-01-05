@@ -6,29 +6,69 @@ import { useState, useEffect } from "react"
 import { Menu, X, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { onAuthStateChanged } from "firebase/auth"
-import { doc, getDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 
 export function Header() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true)
 
   useEffect(() => {
+    setIsCheckingAdmin(true)
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Verificar se o usuário tem role de admin
         try {
           const userDoc = await getDoc(doc(db, "users", user.uid))
+          
+          if (!userDoc.exists()) {
+            console.log("Documento do usuário não encontrado no Firestore para:", user.email)
+            
+            // Se for o email admin, criar o documento automaticamente
+            if (user.email === "admin@afinare.com") {
+              console.log("Criando documento para admin...")
+              try {
+                await setDoc(doc(db, "users", user.uid), {
+                  email: "admin@afinare.com",
+                  role: "admin",
+                  createdAt: new Date().toISOString(),
+                })
+                console.log("✅ Documento admin criado")
+                setIsAdmin(true)
+                setIsCheckingAdmin(false)
+                return
+              } catch (error) {
+                console.error("Erro ao criar documento admin:", error)
+              }
+            }
+            
+            setIsAdmin(false)
+            setIsCheckingAdmin(false)
+            return
+          }
+          
           const userData = userDoc.data()
           const role = userData?.role || "cliente"
+          
+          console.log("Verificando role do usuário:", {
+            email: user.email,
+            uid: user.uid,
+            role: role,
+            userData: userData
+          })
+          
           setIsAdmin(role === "admin")
+          setIsCheckingAdmin(false)
         } catch (error) {
           console.error("Erro ao verificar role do usuário:", error)
           setIsAdmin(false)
+          setIsCheckingAdmin(false)
         }
       } else {
         setIsAdmin(false)
+        setIsCheckingAdmin(false)
       }
     })
     return () => unsubscribe()
